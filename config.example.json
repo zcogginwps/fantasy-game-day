@@ -1,0 +1,13 @@
+{
+  "timezone": "America/Chicago",
+  "include_bench": true,
+  "sleeper": {
+    "username": "YOUR_SLEEPER_USERNAME"
+  },
+  "espn": {
+    "espn_s2": "PASTE_ESPN_S2_COOKIE",
+    "swid": "{PASTE-SWID-COOKIE}",
+    "league_ids": [],
+    "auto_discover": true
+  }
+}

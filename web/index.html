@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Game Day">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Game Day</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --surface: #171a21;
+    --surface-2: #1e222b;
+    --line: #2a2f3a;
+    --text: #e8ebf0;
+    --muted: #939bab;
+    --for: #34d17c;
+    --for-dim: rgba(52, 209, 124, .13);
+    --against: #ff5f6d;
+    --against-dim: rgba(255, 95, 109, .13);
+    --both: #ffc531;
+    --both-dim: rgba(255, 197, 49, .13);
+    --warn: #ffb020;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6f9; --surface: #fff; --surface-2: #f0f2f6; --line: #e0e4ea;
+      --text: #12151b; --muted: #5f6877;
+      --for: #0f9d58; --for-dim: rgba(15,157,88,.11);
+      --against: #d92d3c; --against-dim: rgba(217,45,60,.11);
+      --both: #b8860b; --both-dim: rgba(212,160,23,.15);
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    padding: max(env(safe-area-inset-top), 12px) 12px calc(env(safe-area-inset-bottom) + 32px);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+
+  header { padding: 6px 4px 14px; }
+  h1 { font-size: 21px; margin: 0 0 2px; letter-spacing: -.02em; }
+  .sub { color: var(--muted); font-size: 13px; }
+
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+  .chip {
+    font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+  }
+  .chip.for { color: var(--for); border-color: var(--for); background: var(--for-dim); }
+  .chip.against { color: var(--against); border-color: var(--against); background: var(--against-dim); }
+  .chip.both { color: var(--both); border-color: var(--both); background: var(--both-dim); }
+
+  .controls { display: flex; gap: 8px; margin: 14px 0 8px; }
+  .controls input, .controls select {
+    flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 9px 11px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  .controls select { flex: 0 0 auto; }
+
+  .group-head {
+    font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); margin: 20px 4px 8px;
+  }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 4px solid var(--line); border-radius: 12px;
+    padding: 9px 11px; margin-bottom: 7px;
+  }
+  .card.for { border-left-color: var(--for); background: linear-gradient(90deg, var(--for-dim), transparent 55%), var(--surface); }
+  .card.against { border-left-color: var(--against); background: linear-gradient(90deg, var(--against-dim), transparent 55%), var(--surface); }
+  .card.both { border-left-color: var(--both); background: linear-gradient(90deg, var(--both-dim), transparent 55%), var(--surface); }
+
+  .top { display: flex; align-items: baseline; gap: 8px; }
+  .name { font-weight: 650; font-size: 15.5px; letter-spacing: -.01em; }
+  .meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+  .flag {
+    margin-left: auto; font-size: 10px; font-weight: 800; letter-spacing: .06em;
+    padding: 3px 7px; border-radius: 6px; white-space: nowrap;
+  }
+  .flag.for { color: var(--for); background: var(--for-dim); }
+  .flag.against { color: var(--against); background: var(--against-dim); }
+  .flag.both { color: var(--both); background: var(--both-dim); }
+
+  .line2 { display: flex; align-items: center; gap: 7px; margin-top: 3px; flex-wrap: wrap; }
+  .kick { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .inj {
+    font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
+    background: rgba(255,176,32,.16); color: var(--warn);
+  }
+  .inj.bad { background: var(--against-dim); color: var(--against); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .col { background: var(--surface-2); border-radius: 8px; padding: 6px 8px; min-width: 0; }
+  .col h4 {
+    margin: 0 0 3px; font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .col.for h4 { color: var(--for); }
+  .col.against h4 { color: var(--against); }
+  .col.empty { opacity: .35; }
+  .entry { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+  .entry .lg { font-weight: 600; }
+  .entry .slot {
+    font-size: 10.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px;
+    background: var(--line); color: var(--text); margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .entry.bench { opacity: .5; }
+  .entry .vs { color: var(--muted); font-size: 11.5px; }
+
+  .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
+  .empty-state .big { font-size: 40px; margin-bottom: 10px; }
+  .err {
+    background: var(--against-dim); border: 1px solid var(--against); color: var(--against);
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px;
+  }
+  footer { text-align: center; color: var(--muted); font-size: 11.5px; margin-top: 26px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Loading…</h1>
+    <div class="sub" id="subtitle"></div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <div class="controls">
+    <input id="search" type="search" placeholder="Search player or league" autocomplete="off">
+    <select id="filter">
+      <option value="all">All</option>
+      <option value="starters">Starters only</option>
+      <option value="for">For me</option>
+      <option value="against">Against me</option>
+      <option value="both">Conflicts</option>
+      <option value="injured">Injured</option>
+    </select>
+  </div>
+
+  <div id="errors"></div>
+  <main id="list"></main>
+  <footer id="footer"></footer>
+</div>
+
+<script>
+const BAD_INJURIES = ["Out", "IR", "Doubtful", "Suspended"];
+let REPORT = null;
+
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const VERDICT_LABEL = { for: "FOR ME", against: "AGAINST", both: "CONFLICT" };
+
+function entryHtml(e, isOpponent) {
+  const bench = !e.starting ? " bench" : "";
+  const vs = isOpponent && e.opponent
+    ? ` <span class="vs">· ${esc(e.opponent)}</span>` : "";
+  return `<div class="entry${bench}"><span class="lg">${esc(e.league)}</span>` +
+         `<span class="slot">${esc(e.slot)}</span>${vs}</div>`;
+}
+
+function cardHtml(p) {
+  const injBad = BAD_INJURIES.indexOf(p.injury_status) !== -1;
+  const inj = p.injury_status
+    ? `<span class="inj${injBad ? " bad" : ""}">${esc(p.injury_status)}` +
+      `${p.injury_body_part ? " · " + esc(p.injury_body_part) : ""}</span>`
+    : "";
+
+  const forCol = p.for_me.length
+    ? `<div class="col for"><h4>For me</h4>${p.for_me.map(e => entryHtml(e, false)).join("")}</div>`
+    : `<div class="col for empty"><h4>For me</h4><div class="entry">—</div></div>`;
+
+  const againstCol = p.against_me.length
+    ? `<div class="col against"><h4>Against me</h4>${p.against_me.map(e => entryHtml(e, true)).join("")}</div>`
+    : `<div class="col against empty"><h4>Against me</h4><div class="entry">—</div></div>`;
+
+  return `<article class="card ${p.verdict}">
+    <div class="top">
+      <span class="name">${esc(p.name)}</span>
+      <span class="meta">${esc(p.position)} · ${esc(p.team)}</span>
+      <span class="flag ${p.verdict}">${VERDICT_LABEL[p.verdict]}</span>
+    </div>
+    <div class="line2">
+      <span class="kick">${esc(p.kickoff_label)} · ${esc(p.matchup)}</span>
+      ${inj}
+    </div>
+    <div class="cols">${forCol}${againstCol}</div>
+  </article>`;
+}
+
+function render() {
+  if (!REPORT) return;
+  const term = document.getElementById("search").value.trim().toLowerCase();
+  const mode = document.getElementById("filter").value;
+
+  let players = REPORT.players.filter(p => {
+    if (mode === "starters" && !p.starting_anywhere) return false;
+    if (mode === "for" && p.verdict !== "for") return false;
+    if (mode === "against" && p.verdict !== "against") return false;
+    if (mode === "both" && p.verdict !== "both") return false;
+    if (mode === "injured" && !p.injury_status) return false;
+    if (!term) return true;
+    const hay = [p.name, p.team, p.position]
+      .concat(p.for_me.map(e => e.league))
+      .concat(p.against_me.map(e => e.league))
+      .join(" ").toLowerCase();
+    return hay.indexOf(term) !== -1;
+  });
+
+  const list = document.getElementById("list");
+  if (!players.length) {
+    list.innerHTML = `<div class="empty-state"><div class="big">🏈</div>
+      <div>${REPORT.players.length ? "No players match this filter." : "No rostered players are in today's games."}</div></div>`;
+    return;
+  }
+
+  // Group by kickoff so the day reads in the order it will actually happen.
+  let html = "", lastKick = null;
+  players.forEach(p => {
+    if (p.kickoff_label !== lastKick) {
+      html += `<div class="group-head">${esc(p.kickoff_label)}</div>`;
+      lastKick = p.kickoff_label;
+    }
+    html += cardHtml(p);
+  });
+  list.innerHTML = html;
+}
+
+function paint(report) {
+  REPORT = report;
+  document.getElementById("title").textContent = report.date_label;
+  const games = report.games.length;
+  document.getElementById("subtitle").textContent =
+    `Week ${report.week} · ${games} game${games === 1 ? "" : "s"} · ${report.leagues.length} leagues`;
+
+  const c = report.counts;
+  document.getElementById("chips").innerHTML =
+    `<span class="chip for">${c.for} for me</span>` +
+    `<span class="chip against">${c.against} against me</span>` +
+    `<span class="chip both">${c.both} conflict</span>` +
+    `<span class="chip">${c.total} total</span>`;
+
+  document.getElementById("errors").innerHTML = (report.errors || [])
+    .map(e => `<div class="err">${esc(e)}</div>`).join("");
+
+  document.getElementById("footer").textContent = `Updated ${report.generated_label}`;
+  render();
+}
+
+document.getElementById("search").addEventListener("input", render);
+document.getElementById("filter").addEventListener("change", render);
+
+// A standalone build (see build_static.py) embeds the report directly, so the
+// same page works as a served app or as a single file you can email or save.
+if (window.__REPORT__) {
+  paint(window.__REPORT__);
+} else {
+  fetch("api/report.json?t=" + Date.now())
+  .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(paint)
+  .catch(err => {
+    document.getElementById("title").textContent = "No report yet";
+    document.getElementById("list").innerHTML =
+      `<div class="empty-state"><div class="big">⚠️</div>
+       <div>Could not load the report.<br><small>${esc(err.message)}</small></div></div>`;
+  });
+}
+</script>
+</body>
+</html>
