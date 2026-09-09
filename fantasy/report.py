@@ -1,9 +1,10 @@
 """Build the daily cross-league report.
 
 The hard part is identity: the same human is a Sleeper player id in one league
-and an ESPN player id in another. Sleeper's player dictionary carries an
-`espn_id` field, which gives us a reliable join key for everyone except team
-defenses (whose ESPN ids are synthetic negatives) - those we join on team.
+and an ESPN player id in another. Sleeper's player dictionary usually carries an
+`espn_id`, which gives a reliable join key - but not always (Romeo Doubs, for
+one, has none). So each player is filed under every id we can derive for them,
+and any row found under any of those keys is the same person.
 """
 
 import datetime
@@ -11,14 +12,13 @@ import re
 import unicodedata
 
 from . import espn as espn_client
+from . import lineups as lineups_module
 from . import schedule as schedule_module
 from . import sleeper as sleeper_client
 from .webreq import FetchError
 
-STARTING = "starting"
 BENCH_SLOTS = ("BN", "IR", "TAXI")
 
-# Sort order for the "what is this guy" column.
 POSITION_ORDER = {"QB": 0, "RB": 1, "WR": 2, "TE": 3, "FLEX": 4, "K": 5, "DEF": 6}
 
 SEVERITY = {
@@ -36,15 +36,27 @@ def _normalize_name(name):
     return re.sub(r"[^a-z]", "", text)
 
 
-def canonical_key(record):
-    """A stable id for one real player across both platforms."""
+def _name_key(record):
+    return "N|%s|%s" % (
+        _normalize_name(record.get("name")), record.get("position") or "")
+
+
+def candidate_keys(record):
+    """Every id this player might already be filed under.
+
+    Returning several keys is what lets a Sleeper record with no espn_id still
+    merge with the ESPN copy of the same player.
+    """
     if record.get("position") == "DEF" and record.get("team"):
-        # ESPN gives defenses synthetic negative ids; Sleeper keys them by team
-        # abbreviation. Team is the only thing both agree on.
-        return "DEF|%s" % record["team"]
+        # ESPN gives defenses synthetic negative ids; team is the only thing
+        # both platforms agree on.
+        return ["DEF|%s" % record["team"]]
+
+    keys = []
     if record.get("espn_id"):
-        return "E|%s" % record["espn_id"]
-    return "N|%s|%s" % (_normalize_name(record.get("name")), record.get("position") or "")
+        keys.append("E|%s" % record["espn_id"])
+    keys.append(_name_key(record))
+    return keys
 
 
 def _is_starting(slot):
@@ -60,18 +72,23 @@ class PlayerRow(object):
         self.against_me = []
 
     def merge_record(self, other):
-        """Fill gaps from a second source for the same player."""
-        for field in ("team", "position", "injury_status", "injury_body_part", "espn_id"):
+        for field in ("team", "position", "espn_id"):
             if not self.record.get(field) and other.get(field):
                 self.record[field] = other[field]
-        # Prefer whichever source reports the more serious injury designation,
-        # since a stale "healthy" reading is the dangerous direction to be wrong.
-        mine = SEVERITY.get(self.record.get("injury_status"), 0)
-        theirs = SEVERITY.get(other.get("injury_status"), 0)
-        if theirs > mine:
-            self.record["injury_status"] = other["injury_status"]
-            if other.get("injury_body_part"):
-                self.record["injury_body_part"] = other["injury_body_part"]
+
+        mine_is_sleeper = self.record.get("source") == "sleeper"
+        theirs_is_sleeper = other.get("source") == "sleeper"
+
+        if theirs_is_sleeper and not mine_is_sleeper:
+            # Sleeper is the authority on injury status, always.
+            self.record["injury_status"] = other.get("injury_status") or ""
+            self.record["injury_body_part"] = other.get("injury_body_part") or ""
+            self.record["source"] = "sleeper"
+        elif not mine_is_sleeper and not theirs_is_sleeper:
+            # Neither side is authoritative, so err toward the worse news.
+            if SEVERITY.get(other.get("injury_status"), 0) > SEVERITY.get(
+                    self.record.get("injury_status"), 0):
+                self.record["injury_status"] = other["injury_status"]
 
     @property
     def verdict(self):
@@ -80,16 +97,6 @@ class PlayerRow(object):
         if self.for_me:
             return "for"
         return "against"
-
-
-def _resolve(record_key, records, row_index, record):
-    row = row_index.get(record_key)
-    if row is None:
-        row = PlayerRow(record)
-        row_index[record_key] = row
-    else:
-        row.merge_record(record)
-    return row
 
 
 def _collect_leagues(config, season, week, errors):
@@ -123,8 +130,10 @@ def _collect_leagues(config, season, week, errors):
     espn_config = config.get("espn") or {}
     if espn_config.get("espn_s2") and espn_config.get("swid"):
         league_ids = [str(x) for x in (espn_config.get("league_ids") or [])]
-        if not league_ids and espn_config.get("auto_discover", True):
-            league_ids = espn_client.discover_leagues(espn_config, season)
+        if espn_config.get("auto_discover", True):
+            for found in espn_client.discover_leagues(espn_config, season):
+                if found not in league_ids:
+                    league_ids.append(found)
         for league_id in league_ids:
             try:
                 leagues.append(
@@ -134,6 +143,18 @@ def _collect_leagues(config, season, week, errors):
                 errors.append("ESPN league %s: %s" % (league_id, exc))
 
     return leagues, sleeper_players
+
+
+def _bench_settings(config):
+    """Bench visibility, with the older single include_bench flag honoured."""
+    legacy = config.get("include_bench")
+    mine = config.get("include_my_bench")
+    theirs = config.get("include_opponent_bench")
+    if mine is None:
+        mine = True if legacy is None else legacy
+    if theirs is None:
+        theirs = False if legacy is None else legacy
+    return bool(mine), bool(theirs)
 
 
 def build(config, target_date, season, week, tz):
@@ -148,48 +169,71 @@ def build(config, target_date, season, week, tz):
     else:
         leagues, sleeper_players = _collect_leagues(config, season, week, errors)
 
-    # Reverse index so an ESPN player id can find its richer Sleeper record.
+    # Two ways into Sleeper's data, because espn_id is not always present.
     by_espn_id = {}
+    by_name = {}
     for player_id, player in sleeper_players.items():
         if player.get("espn_id"):
             by_espn_id[str(player["espn_id"])] = player_id
-
-    row_index = {}
+        record = sleeper_client.player_record(player)
+        by_name.setdefault(_name_key(record), player_id)
 
     def record_for(id_source, player_id, league):
-        """Look up the best available player record for a platform-local id."""
+        """The best available player record for a platform-local id."""
         if id_source == "sleeper":
             player = sleeper_players.get(player_id)
-            if not player:
-                return None
-            return sleeper_client.player_record(player)
+            return sleeper_client.player_record(player) if player else None
 
-        # ESPN: prefer Sleeper's copy (fresher injuries, consistent naming).
+        raw = (league.get("players") or {}).get(str(player_id))
+
+        # Prefer Sleeper's copy: the user wants injury status to come from
+        # Sleeper even for players they roster on ESPN.
         sleeper_id = by_espn_id.get(str(player_id))
+        if not sleeper_id and raw:
+            sleeper_id = by_name.get(_name_key(espn_client.player_record(raw)))
         if sleeper_id and sleeper_id in sleeper_players:
             return sleeper_client.player_record(sleeper_players[sleeper_id])
-        raw = (league.get("players") or {}).get(str(player_id))
-        if raw:
-            return espn_client.player_record(raw)
-        return None
+
+        return espn_client.player_record(raw) if raw else None
+
+    include_my_bench, include_opponent_bench = _bench_settings(config)
+
+    row_index = {}
+    # Every rostered player whose NFL team plays today, regardless of whether
+    # the bench settings will show them. Lineup changes are judged against this
+    # so that an opponent benching a starter still counts as news.
+    todays_names = set()
+
+    def resolve(record):
+        keys = candidate_keys(record)
+        row = None
+        for key in keys:
+            if key in row_index:
+                row = row_index[key]
+                break
+        if row is None:
+            row = PlayerRow(record)
+        else:
+            row.merge_record(record)
+        for key in keys:
+            row_index[key] = row  # File under every alias so later ids match.
+        return row
 
     for league in leagues:
-        platform = league["platform"]
-        # Which platform's player ids the roster uses. Normally the same as the
-        # platform, but demo leagues are labelled ESPN while carrying Sleeper ids.
-        id_source = league.get("id_source") or platform
+        id_source = league.get("id_source") or league["platform"]
         league_label = league["league_name"]
 
         for player_id, slot in (league.get("my_slots") or {}).items():
             record = record_for(id_source, player_id, league)
             if not record:
                 continue
-            row = _resolve(canonical_key(record), None, row_index, record)
-            row.for_me.append({
-                "league": league_label,
-                "platform": platform,
-                "slot": slot,
-                "starting": _is_starting(slot),
+            if games_by_team.get(record.get("team")):
+                todays_names.add(record["name"])
+            if not include_my_bench and not _is_starting(slot):
+                continue
+            resolve(record).for_me.append({
+                "league": league_label, "platform": league["platform"],
+                "slot": slot, "starting": _is_starting(slot),
             })
 
         for opponent in league.get("opponents") or []:
@@ -197,30 +241,37 @@ def build(config, target_date, season, week, tz):
                 record = record_for(id_source, player_id, league)
                 if not record:
                     continue
-                row = _resolve(canonical_key(record), None, row_index, record)
-                row.against_me.append({
-                    "league": league_label,
-                    "platform": platform,
-                    "slot": slot,
-                    "opponent": opponent["name"],
+                if games_by_team.get(record.get("team")):
+                    todays_names.add(record["name"])
+                if not include_opponent_bench and not _is_starting(slot):
+                    continue
+                resolve(record).against_me.append({
+                    "league": league_label, "platform": league["platform"],
+                    "slot": slot, "opponent": opponent["name"],
                     "starting": _is_starting(slot),
                 })
 
-    include_bench = config.get("include_bench", True)
+    # Late lineup moves: compare against what we saw on the previous run.
+    def name_lookup(id_source, player_id, league):
+        record = record_for(id_source, player_id, league)
+        return record["name"] if record else None
+
+    snapshot = lineups_module.capture(leagues, name_lookup)
+    previous = lineups_module.load(target_date.isoformat())
+    changes = lineups_module.diff(previous, snapshot)
+    lineups_module.save(target_date.isoformat(), snapshot)
+
+    # One row can be filed under several keys, so collapse to unique rows.
+    unique_rows = list({id(row): row for row in row_index.values()}.values())
 
     players = []
-    for row in row_index.values():
+    for row in unique_rows:
+        if not row.for_me and not row.against_me:
+            continue
         team = row.record.get("team")
         game = games_by_team.get(team)
         if game is None:
             continue  # Not playing today - the whole point of the filter.
-
-        if not include_bench:
-            starting_anywhere = any(
-                entry["starting"] for entry in row.for_me + row.against_me
-            )
-            if not starting_anywhere:
-                continue
 
         game_dict = game.to_dict(tz)
         opponent_team = game.opponent_of(team)
@@ -230,6 +281,7 @@ def build(config, target_date, season, week, tz):
             "team": team,
             "injury_status": row.record.get("injury_status") or "",
             "injury_body_part": row.record.get("injury_body_part") or "",
+            "injury_source": row.record.get("source") or "",
             "verdict": row.verdict,
             "kickoff_utc": game_dict["kickoff_utc"],
             "kickoff_label": game_dict["kickoff_label"],
@@ -239,8 +291,7 @@ def build(config, target_date, season, week, tz):
             "for_me": sorted(row.for_me, key=lambda e: e["league"]),
             "against_me": sorted(row.against_me, key=lambda e: e["league"]),
             "starting_anywhere": any(
-                e["starting"] for e in row.for_me + row.against_me
-            ),
+                e["starting"] for e in row.for_me + row.against_me),
         })
 
     players.sort(key=lambda p: (
@@ -250,6 +301,9 @@ def build(config, target_date, season, week, tz):
         p["name"],
     ))
 
+    # A change only matters today if that player is actually in a game today.
+    relevant_changes = [c for c in changes if c["player"] in todays_names]
+
     return {
         "date": target_date.isoformat(),
         "date_label": target_date.strftime("%A, %B %-d"),
@@ -258,6 +312,7 @@ def build(config, target_date, season, week, tz):
         "timezone": str(tz),
         "generated_at": datetime.datetime.now(tz).isoformat(),
         "generated_label": datetime.datetime.now(tz).strftime("%-I:%M %p"),
+        "bench": {"mine": include_my_bench, "opponent": include_opponent_bench},
         "games": [g.to_dict(tz) for g in games],
         "leagues": [
             {
@@ -268,11 +323,14 @@ def build(config, target_date, season, week, tz):
             for l in leagues
         ],
         "players": players,
+        "changes": relevant_changes,
+        "change_lines": [lineups_module.describe(c) for c in relevant_changes],
         "counts": {
             "total": len(players),
             "for": len([p for p in players if p["verdict"] == "for"]),
             "against": len([p for p in players if p["verdict"] == "against"]),
             "both": len([p for p in players if p["verdict"] == "both"]),
+            "changes": len(relevant_changes),
         },
         "errors": errors,
     }

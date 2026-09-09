@@ -56,7 +56,19 @@ def main():
     args = parser.parse_args()
 
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("0.0.0.0", args.port), Handler) as httpd:
+    try:
+        httpd = socketserver.TCPServer(("0.0.0.0", args.port), Handler)
+    except OSError as exc:
+        if exc.errno == 48:  # EADDRINUSE
+            print("Port %d is already being used - the app is probably already"
+                  " running\nin another Terminal window." % args.port)
+            print("\nEither switch to that window, or start this one on a"
+                  " different port:")
+            print("    python3 serve.py --port %d" % (args.port + 1))
+            return
+        raise
+
+    with httpd:
         print("Fantasy Game Day is running.\n")
         print("  On this Mac:   http://localhost:%d" % args.port)
         print("  On your phone: http://%s:%d" % (lan_ip(), args.port))

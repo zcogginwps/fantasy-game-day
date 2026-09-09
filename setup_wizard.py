@@ -10,6 +10,7 @@ import sys
 from fantasy import config as config_module
 from fantasy import espn as espn_client
 from fantasy import sleeper as sleeper_client
+from fantasy import timezones
 from fantasy.webreq import FetchError
 
 RULE = "-" * 62
@@ -136,19 +137,36 @@ def main():
 
     config = {
         "timezone": "",
-        "include_bench": True,
+        "include_my_bench": True,
+        "include_opponent_bench": False,
         "sleeper": {"username": ""},
         "espn": {"espn_s2": "", "swid": "", "league_ids": [], "auto_discover": True},
     }
 
     detected = detect_timezone()
-    config["timezone"] = ask("\nYour timezone", detected)
+    print("\nTimezone - press Return to accept, or type one like Central or Eastern.")
+    while True:
+        answer = ask("Your timezone", detected)
+        resolved = timezones.resolve(answer)
+        if resolved:
+            if resolved != answer:
+                print("  ok Using %s" % resolved)
+            config["timezone"] = resolved
+            break
+        print("  x Did not recognise %r." % answer)
+        print("    Try Central, Eastern, Mountain, Pacific, Arizona, Alaska,")
+        print("    Hawaii, or a full name like America/Chicago.\n")
 
     setup_sleeper(config)
     setup_espn(config)
 
-    config["include_bench"] = yes_no(
-        "\nInclude bench players in the report?", True)
+    print("\n" + RULE)
+    print("BENCH PLAYERS")
+    print(RULE)
+    config["include_my_bench"] = yes_no(
+        "Include players on YOUR bench?", True)
+    config["include_opponent_bench"] = yes_no(
+        "Include players on your OPPONENTS' benches?", False)
 
     if not config["sleeper"]["username"] and not config["espn"]["espn_s2"]:
         print("\nNothing configured - no Sleeper username and no ESPN cookies.")

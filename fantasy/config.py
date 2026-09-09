@@ -9,7 +9,8 @@ DATA_DIR = os.path.join(ROOT, "data")
 
 DEFAULTS = {
     "timezone": "America/Chicago",
-    "include_bench": True,
+    "include_my_bench": True,
+    "include_opponent_bench": False,
     "sleeper": {"username": ""},
     "espn": {"espn_s2": "", "swid": "", "league_ids": [], "auto_discover": True},
 }

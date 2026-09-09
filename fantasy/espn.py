@@ -5,6 +5,8 @@ authenticated with the two cookies a logged-in browser holds: `espn_s2` and
 `SWID`. Private leagues return 401 without them.
 """
 
+import urllib.parse
+
 from . import teams
 from .webreq import FetchError, get_json
 
@@ -68,9 +70,11 @@ def discover_leagues(config, season):
     if not swid:
         return []
 
+    # SWID is wrapped in braces, which are not legal in a URL path and make
+    # ESPN answer 400 unless they are percent-encoded.
     url = "%s/%s?featureFlags=challengeEntries&showAirings=false&source=ESPNFantasyApp&lang=en&section=fantasy" % (
         FAN_BASE,
-        swid,
+        urllib.parse.quote(swid, safe=""),
     )
     try:
         payload = get_json(url, cookies=cookies)
@@ -137,6 +141,7 @@ def player_record(player):
         "injury_status": INJURY_LABELS.get(raw_status, raw_status.title()),
         "injury_body_part": "",
         "espn_id": str(player.get("id")) if player.get("id") is not None else None,
+        "source": "espn",
     }
 
 

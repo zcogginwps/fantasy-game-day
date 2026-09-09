@@ -179,4 +179,5 @@ def player_record(player):
         "injury_status": player.get("injury_status") or "",
         "injury_body_part": player.get("injury_body_part") or "",
         "espn_id": str(player["espn_id"]) if player.get("espn_id") else None,
+        "source": "sleeper",
     }

@@ -119,6 +119,17 @@
 
   .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
   .empty-state .big { font-size: 40px; margin-bottom: 10px; }
+  .changes {
+    background: var(--surface); border: 1px solid var(--both);
+    border-left: 4px solid var(--both); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 12px;
+  }
+  .changes h3 {
+    margin: 0 0 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--both);
+  }
+  .changes div { font-size: 12.5px; line-height: 1.5; }
+  .changes .mine { opacity: .65; }
   .err {
     background: var(--against-dim); border: 1px solid var(--against); color: var(--against);
     border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px;
@@ -146,6 +157,7 @@
     </select>
   </div>
 
+  <div id="changes"></div>
   <div id="errors"></div>
   <main id="list"></main>
   <footer id="footer"></footer>
@@ -248,6 +260,15 @@ function paint(report) {
     `<span class="chip against">${c.against} against me</span>` +
     `<span class="chip both">${c.both} conflict</span>` +
     `<span class="chip">${c.total} total</span>`;
+
+  const changes = report.changes || [];
+  document.getElementById("changes").innerHTML = changes.length
+    ? `<div class="changes"><h3>Lineup changes since the last check</h3>` +
+      changes.map((c, i) =>
+        `<div class="${c.side === "mine" ? "mine" : ""}">` +
+        `${esc((report.change_lines || [])[i] || "")}</div>`).join("") +
+      `</div>`
+    : "";
 
   document.getElementById("errors").innerHTML = (report.errors || [])
     .map(e => `<div class="err">${esc(e)}</div>`).join("");
