@@ -1,4 +1,4 @@
-"""Generate web/icon.png - a football helmet - with no image libraries.
+"""Generate web/helmet.png - a football helmet - with no image libraries.
 
 Everything is drawn by testing each pixel against a few ellipses and capsules,
 so this needs nothing installed. Shapes are described in 0..1 coordinates and
@@ -91,6 +91,6 @@ def build():
 
 
 if __name__ == "__main__":
-    with open("web/icon.png", "wb") as handle:
+    with open("web/helmet.png", "wb") as handle:
         handle.write(build())
-    print("wrote web/icon.png")
+    print("wrote web/helmet.png")

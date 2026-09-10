@@ -22,8 +22,8 @@ self.addEventListener("push", event => {
   const title = payload.title || "Fantasy Tracker";
   const options = {
     body: payload.body || "",
-    icon: "icon.png",
-    badge: "icon.png",
+    icon: "helmet.png",
+    badge: "helmet.png",
     // A tag lets a later push replace an earlier one rather than stacking.
     tag: payload.tag || "gameday",
     renotify: true,
