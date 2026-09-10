@@ -16,6 +16,7 @@ COLORS = {
     "both": ("#b8860b", "#fdf6e3"),
 }
 LABEL = {"for": "FOR ME", "against": "AGAINST", "both": "CONFLICT"}
+GROUP = {"for": "For me", "both": "Conflict", "against": "Against me"}
 BAD_INJURIES = ("Out", "IR", "Doubtful", "Suspended")
 
 
@@ -114,14 +115,17 @@ def build_html(day, week, change_lines=None, app_url=None):
             'Lineup changes</div>%s</td></tr></table>' % items)
 
     body = []
-    last_kick = None
+    last_verdict = None
     for player in day["players"]:
-        if player["kickoff_label"] != last_kick:
+        if player["verdict"] != last_verdict:
+            colour = COLORS.get(player["verdict"], ("#5f6877", ""))[0]
+            count = len([p for p in day["players"]
+                         if p["verdict"] == player["verdict"]])
             body.append(
-                '<div style="font-size:11px;font-weight:700;letter-spacing:.07em;'
-                'color:#5f6877;text-transform:uppercase;margin:16px 0 7px;">%s</div>'
-                % _esc(player["kickoff_label"]))
-            last_kick = player["kickoff_label"]
+                '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;'
+                'color:%s;text-transform:uppercase;margin:16px 0 7px;">%s &middot; %d</div>'
+                % (colour, _esc(GROUP.get(player["verdict"], "")), count))
+            last_verdict = player["verdict"]
         body.append(_player_html(player))
 
     if not day["players"]:
@@ -133,7 +137,7 @@ def build_html(day, week, change_lines=None, app_url=None):
         link = ('<div style="margin-top:20px;text-align:center;">'
                 '<a href="%s" style="background:#0f9d58;color:#fff;font-size:14px;'
                 'font-weight:600;text-decoration:none;padding:10px 18px;'
-                'border-radius:8px;display:inline-block;">Open Game Day</a></div>'
+                'border-radius:8px;display:inline-block;">Open Fantasy Tracker</a></div>'
                 % _esc(app_url))
 
     return """<!doctype html>
@@ -157,7 +161,7 @@ def build_html(day, week, change_lines=None, app_url=None):
       <tr><td>%s%s%s</td></tr>
       <tr><td style="font-family:-apple-system,Segoe UI,Arial,sans-serif;
                      color:#9aa2b0;font-size:11px;text-align:center;padding-top:22px;">
-        Fantasy Game Day
+        Fantasy Tracker
       </td></tr>
     </table>
   </td></tr>
@@ -207,7 +211,7 @@ def send(subject, html, text, config=None):
 
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = formataddr(("Fantasy Game Day", from_address))
+    message["From"] = formataddr(("Fantasy Tracker", from_address))
     message["To"] = to_address
     message.set_content(text)
     message.add_alternative(html, subtype="html")

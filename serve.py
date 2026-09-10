@@ -73,7 +73,7 @@ def main():
         raise
 
     with httpd:
-        print("Fantasy Game Day is running.\n")
+        print("Fantasy Tracker is running.\n")
         print("  On this Mac:   http://localhost:%d" % args.port)
         print("  On your phone: http://%s:%d" % (lan_ip(), args.port))
         print("\n(Your phone must be on the same wifi. Press Control-C to stop.)")

@@ -16,10 +16,10 @@ self.addEventListener("push", event => {
   try {
     payload = event.data ? event.data.json() : {};
   } catch (err) {
-    payload = { title: "Game Day", body: event.data ? event.data.text() : "" };
+    payload = { title: "Fantasy Tracker", body: event.data ? event.data.text() : "" };
   }
 
-  const title = payload.title || "Game Day";
+  const title = payload.title || "Fantasy Tracker";
   const options = {
     body: payload.body || "",
     icon: "icon.png",

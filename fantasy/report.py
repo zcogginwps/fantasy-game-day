@@ -21,6 +21,10 @@ BENCH_SLOTS = ("BN", "IR", "TAXI")
 
 POSITION_ORDER = {"QB": 0, "RB": 1, "WR": 2, "TE": 3, "FLEX": 4, "K": 5, "DEF": 6}
 
+# Your players first, conflicts next, opponents last - the app groups by this
+# and the email follows the same order.
+VERDICT_ORDER = {"for": 0, "both": 1, "against": 2}
+
 SEVERITY = {
     "Out": 4, "IR": 4, "Suspended": 4, "Doubtful": 3,
     "Questionable": 2, "Day-to-Day": 2, "Probable": 1, "": 0,
@@ -291,6 +295,7 @@ class Assembler(object):
             })
 
         players.sort(key=lambda p: (
+            VERDICT_ORDER.get(p["verdict"], 9),
             p["kickoff_utc"],
             0 if p["starting_anywhere"] else 1,
             POSITION_ORDER.get(p["position"], 9),

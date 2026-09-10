@@ -1,6 +1,6 @@
 {
-  "name": "Fantasy Game Day",
-  "short_name": "Game Day",
+  "name": "Fantasy Tracker",
+  "short_name": "Fantasy Tracker",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0f1115",

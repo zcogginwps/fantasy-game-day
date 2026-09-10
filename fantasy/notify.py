@@ -1,4 +1,4 @@
-"""Local notifications.
+"""Local notifications for Fantasy Tracker.
 
 Phase 1 delivers to the Mac via osascript. Phase 2 will add iOS push, which
 needs HTTPS hosting; this module is the seam where that plugs in.

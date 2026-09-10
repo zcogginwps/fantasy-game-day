@@ -52,9 +52,9 @@ def main():
         text = emailer.build_text(day, week, bundle_data.get("change_lines"))
         subject = "Test - %s" % day["date_label"]
     else:
-        html = "<p>Fantasy Game Day test email.</p>"
-        text = "Fantasy Game Day test email."
-        subject = "Fantasy Game Day test"
+        html = "<p>Fantasy Tracker test email.</p>"
+        text = "Fantasy Tracker test email."
+        subject = "Fantasy Tracker test"
 
     print("\n  Sending...")
     sent, error = emailer.send(subject, html, text, config={
