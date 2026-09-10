@@ -11,13 +11,33 @@ SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scorebo
 class Game(object):
     """One NFL game, with kickoff already converted to the user's timezone."""
 
-    def __init__(self, event_id, kickoff_utc, home, away, state, status_detail):
+    def __init__(self, event_id, kickoff_utc, home, away, state, status_detail,
+                 period=0, clock=0.0):
         self.event_id = event_id
         self.kickoff_utc = kickoff_utc
         self.home = home
         self.away = away
         self.state = state
         self.status_detail = status_detail
+        self.period = period or 0
+        self.clock = clock or 0.0
+
+    def fraction_remaining(self):
+        """How much of this game is still to be played, from 1.0 down to 0.0.
+
+        Regulation is four 15-minute quarters; `clock` is seconds left in the
+        current one. Overtime counts as a small tail rather than extra game.
+        """
+        if self.state == "pre":
+            return 1.0
+        if self.state == "post":
+            return 0.0
+        if self.period <= 0:
+            return 1.0
+        if self.period > 4:
+            return max(0.0, min(self.clock / 3600.0, 0.08))
+        seconds_left = (4 - self.period) * 900.0 + self.clock
+        return max(0.0, min(seconds_left / 3600.0, 1.0))
 
     def opponent_of(self, team):
         """Who the given team is facing in this game."""
@@ -38,6 +58,8 @@ class Game(object):
             "away": self.away,
             "state": self.state,
             "status_detail": self.status_detail,
+            "period": self.period,
+            "fraction_remaining": round(self.fraction_remaining(), 4),
             "label": "%s @ %s" % (self.away, self.home),
         }
 
@@ -56,7 +78,8 @@ def _parse_event(event):
         event["date"], "%Y-%m-%dT%H:%MZ"
     ).replace(tzinfo=datetime.timezone.utc)
 
-    status = event.get("status", {}).get("type", {})
+    status_block = event.get("status", {}) or {}
+    status = status_block.get("type", {}) or {}
     return Game(
         event_id=event.get("id"),
         kickoff_utc=kickoff,
@@ -64,6 +87,8 @@ def _parse_event(event):
         away=away,
         state=status.get("state", "pre"),
         status_detail=status.get("shortDetail", ""),
+        period=status_block.get("period") or 0,
+        clock=status_block.get("clock") or 0.0,
     )
 
 

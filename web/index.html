@@ -630,9 +630,12 @@ function renderScoreboard() {
   const anyEstimated = board.some(e => e.win_probability_source === "estimated");
   el("board").innerHTML = board.map(boardCardHtml).join("") +
     (anyEstimated
-      ? `<p class="board-note">ESPN publishes a win probability and it is shown as-is.
-         Sleeper publishes none, so those are estimated here from Sleeper's own
-         player projections and the games still to play.</p>`
+      ? `<p class="board-note">ESPN publishes a win probability, shown as-is.
+         Sleeper publishes none, so those are estimated: each starter's remaining
+         projection is scaled by how much of their game is left, with per-position
+         spreads fitted to Sleeper's own 2025 projections against what actually
+         happened. The estimate never reaches 0% or 100% while games are still
+         being played.</p>`
       : "");
 }
 

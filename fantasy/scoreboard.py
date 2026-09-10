@@ -8,25 +8,11 @@ per-player projections. Estimates are marked as such so they are never mistaken
 for the platform's own number.
 """
 
-import math
-
-from . import sleeper as sleeper_client
-
-# Rough weekly spread of a single fantasy starter's score, in points. Used only
-# to spread the projected margin into a probability.
-PLAYER_SIGMA = 7.5
+from . import winprob
 
 
-def _normal_cdf(z):
-    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
-
-
-def _finished(game):
-    return bool(game) and game.get("state") == "post"
-
-
-def _started(game):
-    return bool(game) and game.get("state") in ("in", "post")
+def _started(player):
+    return (player.get("game_state") or "") in ("in", "post")
 
 
 class Resolver(object):
@@ -42,6 +28,7 @@ class Resolver(object):
         if not player_id:
             return {"name": "Empty", "position": "", "team": None, "slot": slot,
                     "points": None, "projection": None, "game_state": None,
+                    "fraction_remaining": 0.0,
                     "kickoff_label": "", "matchup": ""}
 
         id_source = league.get("id_source") or league["platform"]
@@ -49,6 +36,7 @@ class Resolver(object):
         if not record:
             return {"name": "Unknown", "position": "", "team": None, "slot": slot,
                     "points": points, "projection": None, "game_state": None,
+                    "fraction_remaining": 0.0,
                     "kickoff_label": "", "matchup": ""}
 
         team = record.get("team")
@@ -64,6 +52,8 @@ class Resolver(object):
             "projection": self.projection_for(league, player_id, record),
             "injury_status": record.get("injury_status") or "",
             "game_state": game_dict["state"] if game_dict else None,
+            # 1.0 before kickoff, 0.0 once final - drives the forecast.
+            "fraction_remaining": (game.fraction_remaining() if game else 0.0),
             "kickoff_label": game_dict["kickoff_label"] if game_dict else "",
             "matchup": ("%s %s" % ("vs" if game.is_home(team) else "@",
                                    game.opponent_of(team))) if game else "",
@@ -83,41 +73,6 @@ class Resolver(object):
         if not row:
             return None
         return row.get(league.get("scoring_type") or "pts_ppr")
-
-
-def _project_side(side):
-    """Where this team is heading: points already banked plus what is left.
-
-    A finished player contributes what they actually scored. Anyone still to
-    play, or mid-game, contributes the better of their score so far and their
-    projection.
-    """
-    total = 0.0
-    unsettled = 0
-    for player in side["starters"]:
-        points = player.get("points") or 0.0
-        projection = player.get("projection")
-        if _finished(_game_stub(player)):
-            total += points
-            continue
-        unsettled += 1
-        total += max(points, projection or 0.0)
-    return total, unsettled
-
-
-def _game_stub(player):
-    state = player.get("game_state")
-    return {"state": state} if state else None
-
-
-def _estimate_probability(my_projected, their_projected, unsettled):
-    """A win probability for platforms that do not publish one."""
-    if unsettled <= 0:
-        if my_projected == their_projected:
-            return 0.5
-        return 1.0 if my_projected > their_projected else 0.0
-    sigma = PLAYER_SIGMA * math.sqrt(unsettled)
-    return _normal_cdf((my_projected - their_projected) / sigma)
 
 
 def _build_side(league, raw_side, resolver):
@@ -147,31 +102,29 @@ def build(leagues, resolver):
         me = _build_side(league, raw["me"], resolver)
         opponent = _build_side(league, raw["opponents"][0], resolver)
 
-        my_projection, my_left = _project_side(me)
-        their_projection, their_left = _project_side(opponent)
-        unsettled = my_left + their_left
+        forecast = winprob.matchup(me["starters"], opponent["starters"])
 
         if me["win_probability"] is not None:
+            # The platform publishes its own; always prefer it.
             probability = float(me["win_probability"])
             source = league["platform"]
+            me["projected"] = round(float(me["projected"]), 1)
+            opponent["projected"] = round(float(opponent["projected"]), 1)
         else:
-            probability = _estimate_probability(
-                my_projection, their_projection, unsettled)
+            probability = forecast["probability"]
             source = "estimated"
-
-        # ESPN publishes its own projection; Sleeper's is computed here. Round
-        # both, since ESPN's arrives with a dozen decimal places.
-        me["projected"] = round(
-            my_projection if me["projected"] is None else float(me["projected"]), 1)
-        opponent["projected"] = round(
-            their_projection if opponent["projected"] is None
-            else float(opponent["projected"]), 1)
+            # Show the same projected finals the probability was derived from,
+            # rather than a raw projection total that would disagree with it.
+            me["projected"] = round(forecast["my_projected"], 1)
+            opponent["projected"] = round(forecast["their_projected"], 1)
         me["points"] = None if me["points"] is None else round(float(me["points"]), 1)
         opponent["points"] = (None if opponent["points"] is None
                               else round(float(opponent["points"]), 1))
 
         played = sum(1 for s in me["starters"] + opponent["starters"]
-                     if _started(_game_stub(s)))
+                     if _started(s))
+        unsettled = sum(1 for s in me["starters"] + opponent["starters"]
+                        if (s.get("fraction_remaining") or 0.0) > 0.0)
         entries.append({
             "league": league["league_name"],
             "platform": league["platform"],
