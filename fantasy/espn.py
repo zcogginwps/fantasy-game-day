@@ -37,6 +37,26 @@ LINEUP_SLOTS = {
 
 BENCH_SLOTS = (20, 21)
 
+# The order ESPN itself lists a lineup in: passers, runners, receivers, tight
+# ends, the flex spots, then defense and kicker. Sleeper needs no equivalent
+# because its starters array already arrives in the league's own slot order.
+SLOT_DISPLAY_ORDER = [
+    0, 1,           # QB, TQB
+    2, 3,           # RB, RB/WR
+    4, 5,           # WR, WR/TE
+    6,              # TE
+    23, 7, 24,      # FLEX, OP (superflex), EDR
+    16, 17, 18, 19, # D/ST, K, P, HC
+    8, 9, 10, 11, 12, 13, 14, 15,  # IDP
+]
+
+
+def _slot_rank(slot_id):
+    try:
+        return SLOT_DISPLAY_ORDER.index(slot_id)
+    except ValueError:
+        return len(SLOT_DISPLAY_ORDER)
+
 INJURY_LABELS = {
     "ACTIVE": "",
     "NORMAL": "",
@@ -211,14 +231,25 @@ def load_league(league_id, season, week, config):
         total = live if live else entry.get("totalPoints")
         lineup = []
         if team is not None:
-            for player_id, slot, player, applied in _roster_entries(team):
-                if slot in ("BN", "IR"):
+            rows = []
+            # Named distinctly: reusing "entry" here shadowed the matchup side
+            # passed in, which silently blanked the win probability below.
+            for roster_entry in (team.get("roster") or {}).get("entries") or []:
+                slot_id = roster_entry.get("lineupSlotId")
+                if slot_id in BENCH_SLOTS:
                     continue
-                lineup.append({
-                    "player_id": player_id,
-                    "slot": slot,
-                    "points": applied,
-                })
+                pool = roster_entry.get("playerPoolEntry") or {}
+                player = pool.get("player") or {}
+                player_id = roster_entry.get("playerId") or player.get("id")
+                if player_id is None:
+                    continue
+                rows.append((_slot_rank(slot_id), {
+                    "player_id": str(player_id),
+                    "slot": _slot_label(slot_id),
+                    "points": pool.get("appliedStatTotal"),
+                }))
+            rows.sort(key=lambda r: r[0])
+            lineup = [row for _, row in rows]
         return {
             "name": _team_name(team) if team is not None else "Opponent",
             "points": total,

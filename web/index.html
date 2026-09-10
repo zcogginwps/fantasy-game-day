@@ -75,14 +75,25 @@
     background: var(--surface-2); border: 1px solid var(--line);
     padding: 2px 6px; border-radius: 5px;
   }
-  .board-row {
-    display: flex; align-items: baseline; gap: 8px; padding: 3px 0;
-    font-variant-numeric: tabular-nums;
+  .board-teams {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: start; gap: 8px; margin: 4px 0 2px;
   }
-  .board-row .who { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-  .board-row.mine .who { color: var(--for); }
-  .board-row .proj { color: var(--muted); font-size: 11.5px; margin-left: auto; white-space: nowrap; }
-  .board-row .pts { font-size: 17px; font-weight: 750; min-width: 52px; text-align: right; }
+  .team { min-width: 0; }
+  .team.right { text-align: right; }
+  .tname {
+    font-size: 12.5px; font-weight: 650; overflow-wrap: anywhere; line-height: 1.3;
+  }
+  .team.mine .tname { color: var(--for); }
+  .tscore {
+    font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15;
+    font-variant-numeric: tabular-nums; margin-top: 1px;
+  }
+  .tproj { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .vs {
+    font-size: 10px; font-weight: 800; color: var(--muted); letter-spacing: .08em;
+    align-self: center; padding: 0 2px;
+  }
 
   .winbar {
     height: 6px; border-radius: 3px; background: var(--against);
@@ -104,28 +115,40 @@
     padding: 7px; background: var(--surface-2); color: var(--muted);
     border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
   }
-  .lineups { margin-top: 9px; }
-  .lineup h5 {
-    margin: 9px 0 4px; font-size: 9.5px; font-weight: 800; letter-spacing: .07em;
-    text-transform: uppercase; color: var(--muted);
+
+  .lineups { margin-top: 10px; }
+  .lu-head {
+    display: grid; grid-template-columns: 1fr 34px 1fr; gap: 6px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--muted); padding: 0 4px 5px; border-bottom: 1px solid var(--line);
   }
-  .lineup h5.mine { color: var(--for); }
-  .starter {
-    display: flex; align-items: baseline; gap: 7px; padding: 4px 6px;
-    border-radius: 6px; font-size: 12.5px;
+  .lu-head .r { text-align: right; }
+  .lu-head .l { color: var(--for); }
+  .lu-row {
+    display: grid; grid-template-columns: 1fr 34px 1fr; gap: 6px;
+    align-items: center; padding: 5px 4px; border-radius: 6px;
   }
-  .starter:nth-child(odd) { background: var(--surface-2); }
-  .starter .slot {
-    font-size: 10px; font-weight: 800; color: var(--muted);
-    min-width: 30px; font-variant-numeric: tabular-nums;
+  .lu-row:nth-child(even) { background: var(--surface-2); }
+  .lu-side { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .lu-side.right { flex-direction: row-reverse; }
+  .lu-txt { min-width: 0; flex: 1; }
+  .lu-side.right .lu-txt { text-align: right; }
+  .lu-name {
+    font-size: 12.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere;
   }
-  .starter .nm { font-weight: 600; overflow-wrap: anywhere; }
-  .starter .sub { color: var(--muted); font-size: 11px; white-space: nowrap; }
-  .starter .sc {
-    margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums;
+  .lu-meta { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+  .lu-meta .hurt { color: var(--against); font-weight: 700; }
+  .lu-pts {
+    font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .starter .sc.pending { color: var(--muted); font-weight: 600; }
+  .lu-pts.pending { color: var(--muted); font-weight: 600; }
+  .lu-slot {
+    font-size: 9.5px; font-weight: 800; color: var(--muted); text-align: center;
+    background: var(--line); border-radius: 4px; padding: 2px 0;
+  }
+  .lu-empty { color: var(--muted); font-size: 12px; }
+
   .board-note { color: var(--muted); font-size: 11.5px; margin: 14px 4px 0; line-height: 1.5; }
 
   .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
@@ -499,27 +522,60 @@ function cardHtml(p) {
 // re-fetch does not collapse what you opened.
 const expanded = new Set();
 
-function starterHtml(player) {
+// The centre column is narrow on a phone; long slot names have to shrink.
+const SLOT_SHORT = {
+  SUPER_FLEX: "SFLX", REC_FLEX: "RFLX", IDP_FLEX: "IDP",
+  "WR/TE": "W/T", "RB/WR": "R/W",
+};
+const shortSlot = slot => SLOT_SHORT[slot] || String(slot || "").replace(/_/g, " ");
+
+function ptsHtml(player) {
+  if (!player) return `<span class="lu-pts pending">—</span>`;
   const played = player.game_state && player.game_state !== "pre";
-  const score = played
-    ? `<span class="sc">${(Number(player.points) || 0).toFixed(1)}</span>`
-    : `<span class="sc pending">${esc(player.kickoff_label || "—")}</span>`;
-  const injury = player.injury_status
-    ? ` <span class="sub" style="color:var(--against)">${esc(player.injury_status)}</span>`
-    : "";
-  return `<div class="starter">
-    <span class="slot">${esc(player.slot || "")}</span>
-    <span class="nm">${esc(player.name)}</span>
-    <span class="sub">${esc(player.position)}${player.team ? " · " + esc(player.team) : ""}</span>
-    ${injury}${score}
+  const value = (Number(player.points) || 0).toFixed(1);
+  return `<span class="lu-pts${played ? "" : " pending"}">${value}</span>`;
+}
+
+function sideHtml(player, right) {
+  if (!player || !player.name || player.name === "Empty") {
+    return `<div class="lu-side${right ? " right" : ""}">
+      <div class="lu-txt"><div class="lu-empty">—</div></div></div>`;
+  }
+  const bits = [player.position, player.team].filter(Boolean).join(" · ");
+  const when = player.game_state && player.game_state !== "pre"
+    ? player.matchup : player.kickoff_label;
+  const hurt = player.injury_status
+    ? ` <span class="hurt">${esc(player.injury_status)}</span>` : "";
+
+  return `<div class="lu-side${right ? " right" : ""}">
+    <div class="lu-txt">
+      <div class="lu-name">${esc(player.name)}</div>
+      <div class="lu-meta">${esc(bits)}${when ? " · " + esc(when) : ""}${hurt}</div>
+    </div>
+    ${ptsHtml(player)}
   </div>`;
 }
 
-function lineupHtml(side, mine) {
-  return `<div class="lineup">
-    <h5 class="${mine ? "mine" : ""}">${esc(side.name)}</h5>
-    ${side.starters.map(starterHtml).join("")}
-  </div>`;
+/* Both teams in a league fill the same slot template, so pairing by position
+   lines the lineups up the way the league itself displays them. */
+function lineupRowsHtml(entry) {
+  const mine = entry.me.starters || [];
+  const theirs = entry.opponent.starters || [];
+  const rows = [];
+  for (let i = 0; i < Math.max(mine.length, theirs.length); i++) {
+    const a = mine[i], b = theirs[i];
+    const slot = (a && a.slot) || (b && b.slot) || "";
+    rows.push(`<div class="lu-row">
+      ${sideHtml(a, false)}
+      <div class="lu-slot">${esc(shortSlot(slot))}</div>
+      ${sideHtml(b, true)}
+    </div>`);
+  }
+  return `<div class="lu-head">
+      <span class="l">${esc(entry.me.name)}</span>
+      <span></span>
+      <span class="r">${esc(entry.opponent.name)}</span>
+    </div>${rows.join("")}`;
 }
 
 function boardCardHtml(entry) {
@@ -527,10 +583,10 @@ function boardCardHtml(entry) {
   const estimated = entry.win_probability_source === "estimated";
   const open = expanded.has(entry.league);
 
-  const row = (side, mine) => `<div class="board-row${mine ? " mine" : ""}">
-      <span class="who">${esc(side.name)}</span>
-      <span class="proj">proj ${side.projected === null ? "—" : side.projected}</span>
-      <span class="pts">${side.points === null ? "—" : side.points.toFixed(1)}</span>
+  const team = (side, mine) => `<div class="team${mine ? " mine" : " right"}">
+      <div class="tname">${esc(side.name)}</div>
+      <div class="tscore">${side.points === null ? "—" : side.points.toFixed(1)}</div>
+      <div class="tproj">proj ${side.projected === null ? "—" : side.projected}</div>
     </div>`;
 
   return `<article class="board-card" data-league="${esc(entry.league)}">
@@ -538,8 +594,11 @@ function boardCardHtml(entry) {
       <span class="board-league">${esc(entry.league)}</span>
       <span class="board-platform">${esc(entry.platform)}</span>
     </div>
-    ${row(entry.me, true)}
-    ${row(entry.opponent, false)}
+    <div class="board-teams">
+      ${team(entry.me, true)}
+      <span class="vs">VS</span>
+      ${team(entry.opponent, false)}
+    </div>
     <div class="winbar"><span style="width:${pct}%"></span></div>
     <div class="winline">
       <b>${pct}%</b> to win
@@ -549,10 +608,7 @@ function boardCardHtml(entry) {
     <button class="board-toggle" type="button">
       ${open ? "Hide lineups" : "Show lineups"}
     </button>
-    <div class="lineups" ${open ? "" : "hidden"}>
-      ${lineupHtml(entry.me, true)}
-      ${lineupHtml(entry.opponent, false)}
-    </div>
+    <div class="lineups" ${open ? "" : "hidden"}>${lineupRowsHtml(entry)}</div>
   </article>`;
 }
 
