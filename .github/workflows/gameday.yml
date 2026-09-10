@@ -65,21 +65,44 @@ jobs:
         run: |
           python notify_run.py ${{ inputs.force && format('--force {0}', inputs.force) || '' }}
 
+      # Bookkeeping only. It must never block publishing, so the whole step is
+      # allowed to fail without failing the job.
       - name: Remember collected weeks, lineups and sent alerts
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # data/ is gitignored for local use; -f tracks just the state we need
-          # to carry between scheduled runs.
-          git add -f data/weeks data/lineups data/alerts 2>/dev/null || true
-          if git diff --cached --quiet; then
-            echo "No state changes to record."
-          else
-            git commit -m "Record weeks, lineups and sent alerts [skip ci]"
-            # Another scheduled run may have pushed while this one was working.
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
+
+          # These files are generated, so merging two versions of them is
+          # meaningless - rebasing produced conflicts that failed the run. Take
+          # whatever is on the branch as the base and let this run's freshly
+          # generated files win outright.
+          for attempt in 1 2 3; do
+            snapshot=$(mktemp -d)
+            cp -R data "$snapshot/"
+
+            git fetch -q origin "${GITHUB_REF_NAME}"
+            git reset -q --hard "origin/${GITHUB_REF_NAME}"
+            rm -rf data
+            cp -R "$snapshot/data" data
+            rm -rf "$snapshot"
+
+            # data/ is gitignored for local use; -f tracks just the state that
+            # has to survive between scheduled runs.
+            git add -f data/weeks data/lineups data/alerts 2>/dev/null || true
+
+            if git diff --cached --quiet; then
+              echo "No state changes to record."
+              break
+            fi
+
+            git commit -q -m "Record weeks, lineups and sent alerts [skip ci]"
+            if git push -q origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Recorded state (attempt $attempt)."
+              break
+            fi
+            echo "Someone else pushed first; retrying ($attempt)."
+          done
 
       - name: Assemble the site
         run: |
