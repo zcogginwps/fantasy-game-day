@@ -192,10 +192,15 @@ def send(subject, html, text, config=None):
     config = config or {}
     host = config.get("host") or os.environ.get("SMTP_HOST") or "smtp.gmail.com"
     port = int(config.get("port") or os.environ.get("SMTP_PORT") or 587)
-    user = config.get("user") or os.environ.get("SMTP_USER") or ""
-    password = config.get("password") or os.environ.get("SMTP_PASSWORD") or ""
-    to_address = config.get("to") or os.environ.get("EMAIL_TO") or user
-    from_address = config.get("sender") or os.environ.get("EMAIL_FROM") or user
+    user = (config.get("user") or os.environ.get("SMTP_USER") or "").strip()
+    # Google shows app passwords as four spaced groups ("abcd efgh ijkl mnop")
+    # but rejects the spaces, so strip all whitespace rather than making the
+    # user notice that themselves.
+    password = "".join(
+        (config.get("password") or os.environ.get("SMTP_PASSWORD") or "").split())
+    to_address = (config.get("to") or os.environ.get("EMAIL_TO") or user).strip()
+    from_address = (config.get("sender") or os.environ.get("EMAIL_FROM")
+                    or user).strip()
 
     if not user or not password or not to_address:
         return False, "Email is not configured (SMTP_USER / SMTP_PASSWORD / EMAIL_TO)."
@@ -219,5 +224,10 @@ def send(subject, html, text, config=None):
                 server.login(user, password)
                 server.send_message(message)
         return True, None
+    except smtplib.SMTPAuthenticationError as exc:
+        return False, (
+            "Email rejected the login (%s). Gmail needs a 16-character app "
+            "password from myaccount.google.com/apppasswords, not the account "
+            "password, and 2-Step Verification must be on." % exc.smtp_code)
     except (smtplib.SMTPException, OSError) as exc:
         return False, "Email failed: %s" % exc
