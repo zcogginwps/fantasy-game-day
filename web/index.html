@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Game Day">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
+<script src="vapid-public-key.js"></script>
 <title>Game Day</title>
 <style>
   :root {
@@ -165,6 +166,30 @@
     border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px;
   }
   footer { text-align: center; color: var(--muted); font-size: 11.5px; margin-top: 26px; }
+
+  .notif {
+    margin-top: 26px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 13px;
+  }
+  .notif h3 {
+    margin: 0 0 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .notif p { margin: 0 0 9px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .notif p.ok { color: var(--for); }
+  .notif p.bad { color: var(--against); }
+  .notif button {
+    width: 100%; font: inherit; font-size: 14px; font-weight: 650; padding: 10px;
+    background: var(--for); color: #06210f; border: 0; border-radius: 9px;
+    cursor: pointer;
+  }
+  .notif button.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--line); }
+  .notif textarea {
+    width: 100%; height: 92px; margin-top: 9px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 10.5px; padding: 8px; border-radius: 8px; resize: vertical;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
+  }
+  .notif ol { margin: 9px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
 </style>
 </head>
 <body>
@@ -205,6 +230,22 @@
   <div id="errors"></div>
   <main id="list"></main>
   <footer id="footer"></footer>
+
+  <section class="notif" id="notif">
+    <h3>Notifications</h3>
+    <p id="notif-status">Checking…</p>
+    <button id="notif-enable" type="button" hidden>Enable notifications</button>
+    <div id="notif-result" hidden>
+      <ol>
+        <li>Copy the text below.</li>
+        <li>On a computer, open your repository on github.com.</li>
+        <li>Settings &rarr; Secrets and variables &rarr; Actions.</li>
+        <li>Edit <strong>PUSH_SUBSCRIPTION</strong> and paste it in.</li>
+      </ol>
+      <textarea id="notif-json" readonly spellcheck="false"></textarea>
+      <button class="secondary" id="notif-copy" type="button">Copy to clipboard</button>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -440,6 +481,116 @@ el("f-week").addEventListener("change", () => {
   el(id).addEventListener("change", render));
 el("search").addEventListener("input", render);
 el("reset").addEventListener("click", resetFilters);
+
+/* ---- push notification enrolment ---------------------------------------
+
+   iOS only allows web push from a PWA that has been added to the Home Screen,
+   and only over HTTPS. Both are checked before offering the button so the
+   failure explains itself rather than throwing. */
+
+const isStandalone = () =>
+  window.matchMedia("(display-mode: standalone)").matches ||
+  window.navigator.standalone === true;
+
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+function urlB64ToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+function notifStatus(text, kind) {
+  const node = el("notif-status");
+  node.textContent = text;
+  node.className = kind || "";
+}
+
+async function initNotifications() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    notifStatus("This browser cannot receive web push notifications.", "bad");
+    return;
+  }
+  if (!window.isSecureContext) {
+    notifStatus("Open the published https:// address to set up notifications. " +
+                "They cannot be enabled over a local network address.", "bad");
+    return;
+  }
+  if (isIOS() && !isStandalone()) {
+    notifStatus("First add this page to your Home Screen: tap the Share button, " +
+                "then 'Add to Home Screen'. Reopen it from the icon and come back here.");
+    return;
+  }
+  if (!window.VAPID_PUBLIC_KEY) {
+    notifStatus("No push key is published with this app yet.", "bad");
+    return;
+  }
+
+  let registration;
+  try {
+    registration = await navigator.serviceWorker.register("sw.js");
+  } catch (err) {
+    notifStatus("Could not start the notification worker: " + err.message, "bad");
+    return;
+  }
+
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) {
+    notifStatus("Notifications are set up on this device.", "ok");
+    showSubscription(existing);
+    return;
+  }
+
+  notifStatus("Turn on alerts for game-day mornings, kickoffs, and opponent " +
+              "lineup changes.");
+  el("notif-enable").hidden = false;
+}
+
+function showSubscription(subscription) {
+  el("notif-result").hidden = false;
+  el("notif-json").value = JSON.stringify(subscription);
+}
+
+el("notif-enable").addEventListener("click", async () => {
+  el("notif-enable").disabled = true;
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      notifStatus("Notifications were not allowed. You can change this in " +
+                  "Settings for this app.", "bad");
+      el("notif-enable").disabled = false;
+      return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(window.VAPID_PUBLIC_KEY),
+    });
+    notifStatus("Almost there - send the text below to your repository.", "ok");
+    el("notif-enable").hidden = true;
+    showSubscription(subscription);
+  } catch (err) {
+    notifStatus("Could not enable notifications: " + err.message, "bad");
+    el("notif-enable").disabled = false;
+  }
+});
+
+el("notif-copy").addEventListener("click", async () => {
+  const field = el("notif-json");
+  try {
+    await navigator.clipboard.writeText(field.value);
+    el("notif-copy").textContent = "Copied";
+  } catch (err) {
+    field.select();  // Clipboard API needs permission in some browsers.
+    el("notif-copy").textContent = "Select all, then copy";
+  }
+  setTimeout(() => { el("notif-copy").textContent = "Copy to clipboard"; }, 2500);
+});
+
+initNotifications();
 
 if (window.__REPORT__) {
   paint(window.__REPORT__);

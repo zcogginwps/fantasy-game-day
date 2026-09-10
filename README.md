@@ -150,10 +150,18 @@ you and is excluded from version control.
 
 Phase 1 (this) runs on your Mac and shows the report in a browser.
 
-Game-day alerts currently arrive as Mac notifications while `--watch` is
-running.
+Phase 1 runs locally and shows the report in a browser. Game-day alerts arrive
+as Mac notifications while `--watch` is running.
 
-Phase 2 moves those to your phone — a push in the morning, another before the
-first kickoff, and one whenever an opponent changes their lineup, plus optional
-email. That requires internet hosting, because iOS only delivers web push from
-an HTTPS site.
+Phase 2 puts the app on your phone: a push on game-day mornings, another before
+the first kickoff, one whenever an opponent changes their lineup, and the same
+rundown by email. It runs on GitHub Actions and publishes to GitHub Pages, both
+free. See **[PHASE2-SETUP.md](PHASE2-SETUP.md)**.
+
+| File | Role |
+| --- | --- |
+| `notify_run.py` | Scheduled entrypoint — collects, decides, sends |
+| `make_vapid.py` | Generates the push signing keypair (run once) |
+| `fantasy/push.py` | Sends web push notifications |
+| `fantasy/emailer.py` | Builds and sends the email version |
+| `.github/workflows/gameday.yml` | The every-30-minutes schedule |

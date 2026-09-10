@@ -4,3 +4,6 @@ data/
 __pycache__/
 *.pyc
 .DS_Store
+vapid-private-key.txt
+vapid-private-key.pem
+push-subscription.json

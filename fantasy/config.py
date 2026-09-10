@@ -30,9 +30,48 @@ def _merge(base, override):
     return merged
 
 
+def _flag(name, default):
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def from_env():
+    """Build a config from environment variables.
+
+    GitHub Actions has no config.json - credentials arrive as repository
+    secrets instead.
+    """
+    username = (os.environ.get("SLEEPER_USERNAME") or "").strip()
+    espn_s2 = (os.environ.get("ESPN_S2") or "").strip()
+    swid = (os.environ.get("ESPN_SWID") or "").strip()
+    if not username and not espn_s2:
+        return None
+
+    raw_ids = (os.environ.get("ESPN_LEAGUE_IDS") or "").strip()
+    league_ids = [part.strip() for part in raw_ids.replace(",", " ").split() if part.strip()]
+
+    return {
+        "timezone": (os.environ.get("TIMEZONE") or "America/Chicago").strip(),
+        "include_my_bench": _flag("INCLUDE_MY_BENCH", True),
+        "include_opponent_bench": _flag("INCLUDE_OPPONENT_BENCH", False),
+        "sleeper": {"username": username},
+        "espn": {
+            "espn_s2": espn_s2,
+            "swid": swid,
+            "league_ids": league_ids,
+            "auto_discover": _flag("ESPN_AUTO_DISCOVER", True),
+        },
+    }
+
+
 def load(path=None):
     path = path or CONFIG_PATH
     if not os.path.exists(path):
+        env_config = from_env()
+        if env_config:
+            return _merge(DEFAULTS, env_config)
         raise ConfigError(
             "No config.json found at %s.\nRun:  python3 setup_wizard.py" % path
         )

@@ -48,10 +48,8 @@ def build_and_save(conf, season, weeks, tz, current_week, current_date):
             changes_for_date=current_date if week == current_week else None,
         ))
     demo = bool(conf.get("demo"))
-    merged = bundle_module.merge(
-        bundle_module.load(demo), reports, season, tz, current_week, current_date)
-    bundle_module.save(merged, demo)
-    return merged
+    return bundle_module.store(
+        reports, season, tz, current_week, current_date, demo)
 
 
 def day_summary(day, week):

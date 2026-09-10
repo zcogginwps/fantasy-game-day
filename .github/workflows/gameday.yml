@@ -1,0 +1,98 @@
+name: Game Day
+
+on:
+  # Actions cron is UTC and cannot follow daylight saving, and kickoff times
+  # move around anyway - so run often and let notify_run.py decide whether
+  # anything is actually worth sending.
+  schedule:
+    - cron: "*/30 12-23,0-6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Send an alert immediately (for testing)"
+        required: false
+        type: choice
+        options: ["", "morning", "kickoff"]
+        default: ""
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Never let two runs collect and push at the same time.
+concurrency:
+  group: gameday
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install push library
+        run: pip install -r requirements.txt
+
+      - name: Collect and send
+        env:
+          SLEEPER_USERNAME: ${{ secrets.SLEEPER_USERNAME }}
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          ESPN_LEAGUE_IDS: ${{ secrets.ESPN_LEAGUE_IDS }}
+          TIMEZONE: ${{ vars.TIMEZONE || 'America/Chicago' }}
+          INCLUDE_MY_BENCH: ${{ vars.INCLUDE_MY_BENCH || 'true' }}
+          INCLUDE_OPPONENT_BENCH: ${{ vars.INCLUDE_OPPONENT_BENCH || 'false' }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT || 'mailto:noreply@example.com' }}
+          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          APP_URL: ${{ vars.APP_URL }}
+          MORNING_HOUR: ${{ vars.MORNING_HOUR || '9' }}
+          KICKOFF_LEAD_MINUTES: ${{ vars.KICKOFF_LEAD_MINUTES || '120' }}
+        run: |
+          python notify_run.py ${{ inputs.force && format('--force {0}', inputs.force) || '' }}
+
+      - name: Remember collected weeks, lineups and sent alerts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # data/ is gitignored for local use; -f tracks just the state we need
+          # to carry between scheduled runs.
+          git add -f data/weeks data/lineups data/alerts 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No state changes to record."
+          else
+            git commit -m "Record weeks, lineups and sent alerts [skip ci]"
+            # Another scheduled run may have pushed while this one was working.
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/api
+          cp -R web/. _site/
+          cp data/report.json _site/api/report.json
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

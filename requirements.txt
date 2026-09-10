@@ -1,0 +1,3 @@
+# Only needed for sending web push from GitHub Actions.
+# Every local tool in this project runs on the standard library alone.
+pywebpush==2.0.0

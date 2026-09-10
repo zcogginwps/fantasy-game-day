@@ -1,7 +1,9 @@
 """The multi-week file the web app reads.
 
-Weeks accumulate: collecting week 3 leaves weeks 1 and 2 in place, so the week
-dropdown fills in as the season goes.
+Each week is stored as its own file and the browser-facing bundle is assembled
+from whatever weeks exist. Keeping them separate matters in CI: the weeks are
+committed back to the repository between scheduled runs, and a per-week file
+only changes when that week's data actually changes, rather than every run.
 """
 
 import datetime
@@ -12,34 +14,56 @@ from . import config as config_module
 
 BUNDLE_PATH = os.path.join(config_module.DATA_DIR, "report.json")
 DEMO_PATH = os.path.join(config_module.DATA_DIR, "report-demo.json")
+WEEKS_DIR = os.path.join(config_module.DATA_DIR, "weeks")
+DEMO_WEEKS_DIR = os.path.join(config_module.DATA_DIR, "weeks-demo")
 
 
 def path_for(demo=False):
-    """Demo runs write their own file so real data is never clobbered."""
+    """Demo runs write their own files so real data is never clobbered."""
     return DEMO_PATH if demo else BUNDLE_PATH
 
 
-def load(demo=False):
-    path = path_for(demo)
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "r") as handle:
-            data = json.load(handle)
-    except (ValueError, IOError):
-        return None
-    return data if isinstance(data, dict) and "weeks" in data else None
+def weeks_dir(demo=False):
+    return DEMO_WEEKS_DIR if demo else WEEKS_DIR
 
 
-def merge(existing, week_reports, season, tz, current_week, current_date):
-    """Fold freshly built weeks into whatever was already collected."""
-    bundle = existing or {"weeks": {}}
-    weeks = dict(bundle.get("weeks") or {})
+def save_week(report, demo=False):
+    """Store one week on its own.
 
-    for report in week_reports:
-        weeks[str(report["week"])] = report
+    Sorted keys and no timestamp, so an unchanged week produces a
+    byte-identical file and no spurious commit.
+    """
+    directory = weeks_dir(demo)
+    if not os.path.isdir(directory):
+        os.makedirs(directory)
+    path = os.path.join(directory, "%d.json" % int(report["week"]))
+    tmp = path + ".tmp"
+    with open(tmp, "w") as handle:
+        json.dump(report, handle, separators=(",", ":"), sort_keys=True)
+    os.replace(tmp, path)
+    return path
 
-    # Leagues can differ per week (a new league mid-season); show the union,
+
+def load_weeks(demo=False):
+    directory = weeks_dir(demo)
+    weeks = {}
+    if not os.path.isdir(directory):
+        return weeks
+    for name in os.listdir(directory):
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(directory, name), "r") as handle:
+                report = json.load(handle)
+            weeks[str(int(report["week"]))] = report
+        except (ValueError, IOError, KeyError, TypeError):
+            continue  # A half-written or stale file should not break the app.
+    return weeks
+
+
+def assemble(weeks, season, tz, current_week, current_date):
+    """Build the single file the web app fetches."""
+    # Leagues can differ per week (a league joined mid-season); show the union,
     # preferring the most recent week's naming.
     leagues = {}
     for key in sorted(weeks, key=lambda k: int(k)):
@@ -54,10 +78,7 @@ def merge(existing, week_reports, season, tz, current_week, current_date):
         "timezone": str(tz),
         "generated_at": now.isoformat(),
         "generated_label": now.strftime("%-I:%M %p"),
-        "current": {
-            "week": int(current_week),
-            "date": current_date.isoformat(),
-        },
+        "current": {"week": int(current_week), "date": current_date.isoformat()},
         "leagues": list(leagues.values()),
         "bench": latest.get("bench") or {},
         "weeks": weeks,
@@ -65,6 +86,28 @@ def merge(existing, week_reports, season, tz, current_week, current_date):
         "change_lines": latest.get("change_lines") or [],
         "errors": latest.get("errors") or [],
     }
+
+
+def store(reports, season, tz, current_week, current_date, demo=False):
+    """Save the given weeks, then rebuild and save the bundle."""
+    for report in reports:
+        save_week(report, demo)
+    weeks = load_weeks(demo)
+    bundle = assemble(weeks, season, tz, current_week, current_date)
+    save(bundle, demo)
+    return bundle
+
+
+def load(demo=False):
+    path = path_for(demo)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r") as handle:
+            data = json.load(handle)
+    except (ValueError, IOError):
+        return None
+    return data if isinstance(data, dict) and "weeks" in data else None
 
 
 def save(bundle, demo=False):

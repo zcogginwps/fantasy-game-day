@@ -6,7 +6,6 @@ lineup looked like; the next run compares against that and reports what moved.
 
 import json
 import os
-import time
 
 from . import config as config_module
 
@@ -64,7 +63,9 @@ def load(date_iso):
 def save(date_iso, snapshot):
     if not os.path.isdir(SNAPSHOT_DIR):
         os.makedirs(SNAPSHOT_DIR)
-    payload = {"captured_at": time.time(), "lineups": snapshot}
+    # No timestamp on purpose: the file is committed between runs, and a clock
+    # value would make every run register as a change.
+    payload = {"lineups": snapshot}
     path = snapshot_path(date_iso)
     tmp = path + ".tmp"
     with open(tmp, "w") as handle:
