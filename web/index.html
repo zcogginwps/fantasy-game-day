@@ -134,6 +134,17 @@
 
   .line2 { display: flex; align-items: center; gap: 7px; margin-top: 3px; flex-wrap: wrap; }
   .kick { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .score {
+    margin-left: auto; font-size: 13.5px; font-weight: 750;
+    font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+    color: var(--text); white-space: nowrap;
+  }
+  .score.live::before {
+    content: ""; display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--for); margin-right: 5px;
+    vertical-align: middle; animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .inj {
     font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px;
     background: rgba(255,176,32,.16); color: var(--warn);
@@ -270,6 +281,17 @@ const GROUP_LABEL = { for: "For me", both: "Conflict", against: "Against me" };
 
 let BUNDLE = null;
 
+function scoreLabel(entries) {
+  const values = [];
+  entries.forEach(e => {
+    if (e.points === null || e.points === undefined) return;
+    const v = Math.round(Number(e.points) * 10) / 10;
+    if (values.indexOf(v) === -1) values.push(v);
+  });
+  values.sort((a, b) => a - b);
+  return values.map(v => v.toFixed(1)).join(" / ");
+}
+
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -327,6 +349,9 @@ function applyFilters(player) {
 
   return Object.assign({}, player, {
     for_me: forMe, against_me: against, verdict: verdict,
+    // Recomputed from the surviving leagues, so filtering to one league shows
+    // that league's score rather than every league's.
+    score_label: scoreLabel(forMe.concat(against)),
   });
 }
 
@@ -347,6 +372,13 @@ function entryHtml(entry, isOpponent) {
 }
 
 function cardHtml(p) {
+  // Before kickoff every score is 0.0, which is noise rather than information.
+  const started = p.game_state && p.game_state !== "pre";
+  const score = started && p.score_label
+    ? `<span class="score${p.game_state === "in" ? " live" : ""}">` +
+      `${esc(p.score_label)}</span>`
+    : "";
+
   const injBad = BAD_INJURIES.indexOf(p.injury_status) !== -1;
   const inj = p.injury_status
     ? `<span class="inj${injBad ? " bad" : ""}">${esc(p.injury_status)}` +
@@ -367,6 +399,7 @@ function cardHtml(p) {
     <div class="line2">
       <span class="kick">${esc(p.kickoff_label)} · ${esc(p.matchup)}</span>
       ${inj}
+      ${score}
     </div>
     <div class="cols">
       ${col(p.for_me, "for", "For me", false)}
@@ -493,6 +526,46 @@ function resetFilters() {
 }
 
 /* ---- boot -------------------------------------------------------------- */
+
+/* Re-fetch while the page is open so scores move during games, keeping
+   whatever filters are set rather than snapping back to the defaults. */
+const REFRESH_MS = 120000;
+
+async function refresh() {
+  if (document.hidden || !BUNDLE) return;
+  let bundle;
+  try {
+    const response = await fetch("api/report.json?t=" + Date.now());
+    if (!response.ok) return;
+    bundle = await response.json();
+  } catch (err) {
+    return;  // Offline or mid-deploy; the next tick will pick it up.
+  }
+
+  const keep = {};
+  controls.forEach(id => { keep[id] = el(id).value; });
+
+  BUNDLE = bundle;
+  fillWeeks();
+  fillDays(bundle.current.date);
+  fillLeagues();
+
+  // Restore each filter only if it still exists in the refreshed data.
+  controls.forEach(id => {
+    const select = el(id);
+    if ([...select.options].some(o => o.value === keep[id])) {
+      select.value = keep[id];
+    }
+  });
+
+  el("footer").textContent = `Updated ${bundle.generated_label}`;
+  render();
+}
+
+setInterval(refresh, REFRESH_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refresh();
+});
 
 function paint(bundle) {
   BUNDLE = bundle;

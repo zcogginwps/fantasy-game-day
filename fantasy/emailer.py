@@ -59,6 +59,11 @@ def _player_html(player):
                " &middot; " + _esc(player["injury_body_part"])
                if player.get("injury_body_part") else ""))
 
+    score = ""
+    if player.get("game_state") not in (None, "pre") and player.get("score_label"):
+        score = ('<span style="float:right;font-size:14px;font-weight:700;'
+                 'color:#12151b;">%s</span>' % _esc(player["score_label"]))
+
     return """
   <table role="presentation" width="100%%" cellpadding="0" cellspacing="0"
          style="border-collapse:collapse;margin-bottom:8px;background:%s;
@@ -71,7 +76,7 @@ def _player_html(player):
           <span style="color:#5f6877;font-size:12px;">&nbsp;%s &middot; %s</span>
           <span style="float:right;color:%s;font-size:10px;font-weight:800;">%s</span>
         </div>
-        <div style="color:#5f6877;font-size:12px;margin-top:3px;">%s &middot; %s%s</div>
+        <div style="color:#5f6877;font-size:12px;margin-top:3px;">%s &middot; %s%s%s</div>
         <table role="presentation" width="100%%" cellpadding="0" cellspacing="0"
                style="margin-top:8px;border-collapse:separate;border-spacing:5px 0;">
           <tr valign="top">
@@ -91,7 +96,7 @@ def _player_html(player):
         background, border,
         _esc(player["name"]), _esc(player["position"]), _esc(player["team"]),
         border, LABEL.get(player["verdict"], ""),
-        _esc(player["kickoff_label"]), _esc(player["matchup"]), injury,
+        _esc(player["kickoff_label"]), _esc(player["matchup"]), injury, score,
         _entries_html(player["for_me"], False, "#0f9d58"),
         _entries_html(player["against_me"], True, "#d92d3c"))
 

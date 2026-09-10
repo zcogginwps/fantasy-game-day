@@ -5,7 +5,16 @@ on:
   # move around anyway - so run often and let notify_run.py decide whether
   # anything is actually worth sending.
   schedule:
+    # Baseline: often enough to catch morning alerts and lineup moves.
     - cron: "*/30 12-23,0-6 * * *"
+    # Denser while games are actually being played, so live scores move.
+    # Times are UTC: these cover the Sunday slate and the Thursday, Sunday
+    # and Monday night games in US Central. GitHub can delay scheduled runs
+    # under load, so treat these as a target rather than a guarantee.
+    - cron: "*/10 17-23 * * 0"
+    - cron: "*/10 0-4 * * 1"
+    - cron: "*/10 0-4 * * 2"
+    - cron: "*/10 0-4 * * 5"
   # Deploy code changes straight away rather than waiting for the next tick.
   # The job's own state commits say [skip ci], so this does not loop.
   push:

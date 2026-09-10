@@ -73,6 +73,8 @@ def text_summary(day, week, change_lines, errors):
         parts = ["%-9s %-22s %-3s %-4s %-8s" % (
             symbol[player["verdict"]], player["name"], player["position"],
             player["team"], player["kickoff_label"])]
+        if player.get("score_label") and player.get("game_state") != "pre":
+            parts.append("[%s]" % player["score_label"])
         if player["injury_status"]:
             parts.append("(%s)" % player["injury_status"])
         for entry in player["for_me"]:

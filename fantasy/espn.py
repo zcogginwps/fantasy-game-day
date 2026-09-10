@@ -120,7 +120,7 @@ def _slot_label(slot_id):
 
 
 def _roster_entries(team):
-    """Yield (espn_player_id, slot_label, raw_player) for one team."""
+    """Yield (espn_player_id, slot_label, raw_player, applied_points) for one team."""
     roster = team.get("roster") or {}
     for entry in roster.get("entries") or []:
         pool = entry.get("playerPoolEntry") or {}
@@ -128,7 +128,11 @@ def _roster_entries(team):
         player_id = entry.get("playerId") or player.get("id")
         if player_id is None:
             continue
-        yield str(player_id), _slot_label(entry.get("lineupSlotId")), player
+        # appliedStatTotal is this league's scoring applied to the current
+        # period. The player's own stats array also carries projections
+        # (statSourceId 1), which are not what we want to show.
+        yield (str(player_id), _slot_label(entry.get("lineupSlotId")), player,
+               pool.get("appliedStatTotal"))
 
 
 def player_record(player):
@@ -184,12 +188,15 @@ def load_league(league_id, season, week, config):
     by_id = {team.get("id"): team for team in all_teams}
 
     players = {}
+    points = {}
 
     def slots_for(team):
         slots = {}
-        for player_id, slot, player in _roster_entries(team):
+        for player_id, slot, player, applied in _roster_entries(team):
             slots[player_id] = slot
             players[player_id] = player
+            if applied is not None:
+                points[player_id] = applied
         return slots
 
     settings = payload.get("settings") or {}
@@ -200,6 +207,7 @@ def load_league(league_id, season, week, config):
         "league_name": settings.get("name") or "ESPN league %s" % league_id,
         "week": week,
         "my_slots": slots_for(my_team),
+        "points": points,
         "opponents": [
             {"name": _team_name(by_id[oid]), "slots": slots_for(by_id[oid])}
             for oid in opponent_ids

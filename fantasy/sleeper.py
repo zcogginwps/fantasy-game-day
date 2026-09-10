@@ -136,6 +136,14 @@ def load_league(league, user_id, week):
             return matchup["starters"]
         return roster.get("starters") or []
 
+    # Points are scored with this league's own rules, so the same player can be
+    # worth different amounts in different leagues.
+    points = {}
+    for matchup in matchups:
+        for player_id, value in (matchup.get("players_points") or {}).items():
+            if value is not None:
+                points[player_id] = value
+
     my_matchup = by_roster_id.get(my_roster.get("roster_id")) or {}
     my_matchup_id = my_matchup.get("matchup_id")
 
@@ -156,6 +164,7 @@ def load_league(league, user_id, week):
         "league_id": str(league_id),
         "league_name": league.get("name") or "Sleeper league",
         "week": week,
+        "points": points,
         "my_slots": build_roster_slots(league, my_roster, starters_for(my_roster)),
         "opponents": [
             {

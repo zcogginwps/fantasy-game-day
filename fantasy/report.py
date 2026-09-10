@@ -8,6 +8,7 @@ and any row found under any of those keys is the same person.
 """
 
 import datetime
+import math
 import re
 import unicodedata
 
@@ -82,6 +83,33 @@ def candidate_keys(record):
 
 def _is_starting(slot):
     return slot not in BENCH_SLOTS
+
+
+def distinct_scores(entries):
+    """The distinct point totals a player is worth across the given leagues.
+
+    Leagues score the same performance differently, so one player can be worth
+    12.4 in two leagues and 14.7 in a third. Values are rounded to a tenth
+    before comparing, which also collapses differences too small to matter.
+    """
+    values = []
+    for entry in entries:
+        points = entry.get("points")
+        if points is None:
+            continue
+        # Deliberately not round(): Python rounds halves to even (9.25 -> 9.2)
+        # while JavaScript rounds them up (9.3), which would make the email
+        # disagree with the app. floor(x + 0.5) matches Math.round on both
+        # positive and negative values.
+        value = math.floor(float(points) * 10 + 0.5) / 10.0
+        if value not in values:
+            values.append(value)
+    return sorted(values)
+
+
+def score_label(entries):
+    """"12.4", or "12.4 / 14.7" when leagues disagree."""
+    return " / ".join("%.1f" % v for v in distinct_scores(entries))
 
 
 class PlayerRow(object):
@@ -248,6 +276,7 @@ class Assembler(object):
         for league in self.leagues:
             id_source = league.get("id_source") or league["platform"]
             league_label = league["league_name"]
+            league_points = league.get("points") or {}
 
             for player_id, slot in (league.get("my_slots") or {}).items():
                 record = self.record_for(id_source, player_id, league)
@@ -260,6 +289,7 @@ class Assembler(object):
                 resolve(record).for_me.append({
                     "league": league_label, "platform": league["platform"],
                     "slot": slot, "starting": _is_starting(slot),
+                    "points": league_points.get(player_id),
                 })
 
             for opponent in league.get("opponents") or []:
@@ -275,6 +305,7 @@ class Assembler(object):
                         "league": league_label, "platform": league["platform"],
                         "slot": slot, "opponent": opponent["name"],
                         "starting": _is_starting(slot),
+                        "points": league_points.get(player_id),
                     })
 
         # One row can be filed under several keys, so collapse to unique rows.
@@ -310,6 +341,8 @@ class Assembler(object):
                 "wave_name": wave_name,
                 "for_me": sorted(row.for_me, key=lambda e: e["league"]),
                 "against_me": sorted(row.against_me, key=lambda e: e["league"]),
+                "scores": distinct_scores(row.for_me + row.against_me),
+                "score_label": score_label(row.for_me + row.against_me),
                 "starting_anywhere": any(
                     e["starting"] for e in row.for_me + row.against_me),
             })
