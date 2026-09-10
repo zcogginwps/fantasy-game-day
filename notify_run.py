@@ -103,9 +103,31 @@ def main():
     season = sleeper.get_state().get("season") or str(today.year)
     week = int(sleeper.get_state().get("week") or 1)
 
-    report = report_module.build_week(conf, season, week, tz, changes_for_date=today)
-    merged = bundle_module.store([report], season, tz, week, today)
-    print("Collected week %s (%d days)." % (week, len(report["days"])))
+    state = load_state(today.isoformat())
+
+    # The current week is rebuilt every run for live scores. The rest of the
+    # season is rebuilt once a day: matchups and rosters for future weeks do
+    # change, but not minute to minute, and a full pass takes about a minute.
+    if state.get("weeks_refreshed"):
+        targets = [week]
+    else:
+        targets = sorted(set(range(1, 19)) | {week})
+        print("Daily refresh of all %d weeks." % len(targets))
+
+    reports = []
+    for target in targets:
+        reports.append(report_module.build_week(
+            conf, season, target, tz,
+            changes_for_date=today if target == week else None))
+    merged = bundle_module.store(reports, season, tz, week, today)
+
+    if not state.get("weeks_refreshed"):
+        state["weeks_refreshed"] = True
+        save_state(today.isoformat(), state)
+
+    print("Collected %d week(s); week %s has %d days." % (
+        len(targets), week,
+        len((merged["weeks"].get(str(week)) or {}).get("days") or [])))
 
     day = bundle_module.find_day(merged, week, today.isoformat())
     if not day or not day["games"]:
@@ -118,7 +140,6 @@ def main():
         counts["against"], counts["both"]))
 
     want_email = (os.environ.get("SMTP_USER") or "") != ""
-    state = load_state(today.isoformat())
     sent = set(state.get("sent") or [])
     announced = set(state.get("changes") or [])
     actions = []
@@ -186,8 +207,11 @@ def main():
             sent.add(kind)
 
     if not args.dry_run:
-        save_state(today.isoformat(),
-                   {"sent": sorted(sent), "changes": sorted(announced)})
+        save_state(today.isoformat(), {
+            "sent": sorted(sent),
+            "changes": sorted(announced),
+            "weeks_refreshed": bool(state.get("weeks_refreshed")),
+        })
     return 0
 
 
