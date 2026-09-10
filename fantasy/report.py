@@ -395,7 +395,8 @@ def _load(config, season, week, tz, errors):
     return _collect_leagues(config, season, week, errors)
 
 
-def build_week(config, season, week, tz, changes_for_date=None):
+def build_week(config, season, week, tz, changes_for_date=None,
+               current_week=None):
     """Every game day in one fantasy week, sharing a single league fetch."""
     errors = []
     leagues, sleeper_players = _load(config, season, week, tz, errors)
@@ -415,6 +416,8 @@ def build_week(config, season, week, tz, changes_for_date=None):
     board = scoreboard_module.build(
         leagues,
         scoreboard_module.Resolver(assembler, week_games, projections, tz),
+        week=week,
+        current_week=current_week,
     )
 
     changes = []

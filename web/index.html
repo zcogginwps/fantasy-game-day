@@ -105,6 +105,7 @@
     font-size: 11.5px; color: var(--muted);
   }
   .winline b { color: var(--text); font-size: 12.5px; }
+  .winline.upcoming { margin-top: 9px; font-style: italic; }
   .est {
     font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
     color: var(--both); background: var(--both-dim); padding: 1px 5px; border-radius: 4px;
@@ -530,10 +531,14 @@ const SLOT_SHORT = {
 const shortSlot = slot => SLOT_SHORT[slot] || String(slot || "").replace(/_/g, " ");
 
 function ptsHtml(player) {
-  if (!player) return `<span class="lu-pts pending">—</span>`;
+  // A null score means there is no figure for this week, which is not the same
+  // as a zero and must not be drawn as one.
+  if (!player || player.points === null || player.points === undefined) {
+    return `<span class="lu-pts pending">—</span>`;
+  }
   const played = player.game_state && player.game_state !== "pre";
-  const value = (Number(player.points) || 0).toFixed(1);
-  return `<span class="lu-pts${played ? "" : " pending"}">${value}</span>`;
+  return `<span class="lu-pts${played ? "" : " pending"}">` +
+         `${Number(player.points).toFixed(1)}</span>`;
 }
 
 function sideHtml(player, right) {
@@ -579,15 +584,26 @@ function lineupRowsHtml(entry) {
 }
 
 function boardCardHtml(entry) {
-  const pct = Math.round(entry.win_probability * 100);
-  const estimated = entry.win_probability_source === "estimated";
   const open = expanded.has(entry.league);
+  // A future week has no scores and no honest probability - just the fixture.
+  const upcoming = entry.week_state === "upcoming";
+  const estimated = entry.win_probability_source === "estimated";
+  const pct = upcoming ? null : Math.round(entry.win_probability * 100);
 
   const team = (side, mine) => `<div class="team${mine ? " mine" : " right"}">
       <div class="tname">${esc(side.name)}</div>
       <div class="tscore">${side.points === null ? "—" : side.points.toFixed(1)}</div>
-      <div class="tproj">proj ${side.projected === null ? "—" : side.projected}</div>
+      ${side.projected === null ? "" : `<div class="tproj">proj ${side.projected}</div>`}
     </div>`;
+
+  const odds = upcoming
+    ? `<div class="winline upcoming">Not played yet</div>`
+    : `<div class="winbar"><span style="width:${pct}%"></span></div>
+       <div class="winline">
+         <b>${pct}%</b> to win
+         ${estimated ? '<span class="est">estimated</span>' : ""}
+         <span style="margin-left:auto">${entry.starters_played}/${entry.starters_total} started</span>
+       </div>`;
 
   return `<article class="board-card" data-league="${esc(entry.league)}">
     <div class="board-top">
@@ -599,12 +615,7 @@ function boardCardHtml(entry) {
       <span class="vs">VS</span>
       ${team(entry.opponent, false)}
     </div>
-    <div class="winbar"><span style="width:${pct}%"></span></div>
-    <div class="winline">
-      <b>${pct}%</b> to win
-      ${estimated ? '<span class="est">estimated</span>' : ""}
-      <span style="margin-left:auto">${entry.starters_played}/${entry.starters_total} started</span>
-    </div>
+    ${odds}
     <button class="board-toggle" type="button">
       ${open ? "Hide lineups" : "Show lineups"}
     </button>
@@ -628,6 +639,7 @@ function renderScoreboard() {
   }
 
   const anyEstimated = board.some(e => e.win_probability_source === "estimated");
+  const anyUpcoming = board.some(e => e.week_state === "upcoming");
   el("board").innerHTML = board.map(boardCardHtml).join("") +
     (anyEstimated
       ? `<p class="board-note">ESPN publishes a win probability, shown as-is.
@@ -636,6 +648,11 @@ function renderScoreboard() {
          spreads fitted to Sleeper's own 2025 projections against what actually
          happened. The estimate never reaches 0% or 100% while games are still
          being played.</p>`
+      : "") +
+    (anyUpcoming
+      ? `<p class="board-note">This week has not been played. Both platforms only
+         report scoring for the week in progress, so future weeks show the fixture
+         and the lineups rather than numbers that would be this week's in disguise.</p>`
       : "");
 }
 

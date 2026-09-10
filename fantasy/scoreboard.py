@@ -90,9 +90,25 @@ def _build_side(league, raw_side, resolver):
     }
 
 
-def build(leagues, resolver):
-    """One scoreboard entry per league the user has a matchup in."""
+def build(leagues, resolver, week=None, current_week=None):
+    """One scoreboard entry per league the user has a matchup in.
+
+    `week` and `current_week` decide how much can honestly be shown. Both
+    platforms only report live scoring for the week actually being played:
+    ESPN's applied totals are always the current period whatever week is asked
+    for, and Sleeper publishes projections for only a few hundred players
+    beyond the current week. So scores and probabilities are shown for the
+    current week, and a future week shows the fixture alone.
+    """
     entries = []
+    if week is None or current_week is None:
+        week_state = "current"
+    elif int(week) > int(current_week):
+        week_state = "upcoming"
+    elif int(week) < int(current_week):
+        week_state = "past"
+    else:
+        week_state = "current"
 
     for league in leagues:
         raw = league.get("matchup")
@@ -101,6 +117,32 @@ def build(leagues, resolver):
 
         me = _build_side(league, raw["me"], resolver)
         opponent = _build_side(league, raw["opponents"][0], resolver)
+
+        if week_state != "current":
+            # Per-player points for another week would be this week's numbers
+            # wearing the wrong label, so they are cleared rather than shown.
+            for player in me["starters"] + opponent["starters"]:
+                player["points"] = None
+                player["game_state"] = None
+
+        if week_state == "upcoming":
+            entries.append({
+                "league": league["league_name"],
+                "platform": league["platform"],
+                "me": me,
+                "opponent": opponent,
+                "win_probability": None,
+                "win_probability_source": "unavailable",
+                "week_state": week_state,
+                "starters_played": 0,
+                "starters_total": len(me["starters"]) + len(opponent["starters"]),
+                "in_progress": False,
+            })
+            me["points"] = None
+            opponent["points"] = None
+            me["projected"] = None
+            opponent["projected"] = None
+            continue
 
         forecast = winprob.matchup(me["starters"], opponent["starters"])
 
@@ -132,6 +174,7 @@ def build(leagues, resolver):
             "opponent": opponent,
             "win_probability": round(probability, 3),
             "win_probability_source": source,
+            "week_state": week_state,
             "starters_played": played,
             "starters_total": len(me["starters"]) + len(opponent["starters"]),
             "in_progress": played > 0 and unsettled > 0,

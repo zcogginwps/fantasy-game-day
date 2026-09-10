@@ -46,6 +46,7 @@ def build_and_save(conf, season, weeks, tz, current_week, current_date):
             conf, season, week, tz,
             # Lineup diffing only makes sense for the day being watched.
             changes_for_date=current_date if week == current_week else None,
+            current_week=current_week,
         ))
     demo = bool(conf.get("demo"))
     return bundle_module.store(

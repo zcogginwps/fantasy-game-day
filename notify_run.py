@@ -118,7 +118,8 @@ def main():
     for target in targets:
         reports.append(report_module.build_week(
             conf, season, target, tz,
-            changes_for_date=today if target == week else None))
+            changes_for_date=today if target == week else None,
+            current_week=week))
     merged = bundle_module.store(reports, season, tz, week, today)
 
     if not state.get("weeks_refreshed"):
