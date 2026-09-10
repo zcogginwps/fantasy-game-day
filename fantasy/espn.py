@@ -99,7 +99,7 @@ def fetch_league(league_id, season, config):
     cookies, _ = _cookies(config)
     url = (
         "%s/%s/segments/0/leagues/%s"
-        "?view=mRoster&view=mMatchup&view=mTeam&view=mSettings"
+        "?view=mRoster&view=mMatchup&view=mMatchupScore&view=mTeam&view=mSettings"
         % (LEAGUE_BASE, season, league_id)
     )
     return get_json(url, cookies=cookies)
@@ -175,6 +175,7 @@ def load_league(league_id, season, week, config):
     my_id = my_team.get("id")
 
     opponent_ids = []
+    my_matchups = []
     for matchup in payload.get("schedule") or []:
         if matchup.get("matchupPeriodId") != week:
             continue
@@ -182,8 +183,10 @@ def load_league(league_id, season, week, config):
         away = (matchup.get("away") or {}).get("teamId")
         if home == my_id and away is not None:
             opponent_ids.append(away)
+            my_matchups.append((matchup, "home", "away"))
         elif away == my_id and home is not None:
             opponent_ids.append(home)
+            my_matchups.append((matchup, "away", "home"))
 
     by_id = {team.get("id"): team for team in all_teams}
 
@@ -201,7 +204,42 @@ def load_league(league_id, season, week, config):
 
     settings = payload.get("settings") or {}
 
+    def _side(entry, team):
+        """One team's score, ESPN's own win probability, and its lineup."""
+        # totalPointsLive updates during games; totalPoints is the settled value.
+        live = entry.get("totalPointsLive")
+        total = live if live else entry.get("totalPoints")
+        lineup = []
+        if team is not None:
+            for player_id, slot, player, applied in _roster_entries(team):
+                if slot in ("BN", "IR"):
+                    continue
+                lineup.append({
+                    "player_id": player_id,
+                    "slot": slot,
+                    "points": applied,
+                })
+        return {
+            "name": _team_name(team) if team is not None else "Opponent",
+            "points": total,
+            "projected": entry.get("totalProjectedPointsLive"),
+            # ESPN publishes this per matchup side; Sleeper has no equivalent.
+            "win_probability": entry.get("winProbability"),
+            "starters": lineup,
+        }
+
+    matchup_detail = None
+    if my_matchups:
+        raw, mine_key, theirs_key = my_matchups[0]
+        their_entry = raw.get(theirs_key) or {}
+        their_team = by_id.get(their_entry.get("teamId"))
+        matchup_detail = {
+            "me": _side(raw.get(mine_key) or {}, my_team),
+            "opponents": [_side(their_entry, their_team)],
+        }
+
     return {
+        "matchup": matchup_detail,
         "platform": "espn",
         "league_id": str(league_id),
         "league_name": settings.get("name") or "ESPN league %s" % league_id,

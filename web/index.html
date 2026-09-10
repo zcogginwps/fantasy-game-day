@@ -37,6 +37,9 @@
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* Author rules like ".reset { display: block }" outrank the browser's own
+     [hidden] styling, so anything hidden from script needs this to stay hidden. */
+  [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
     font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
@@ -48,6 +51,82 @@
   header { padding: 6px 4px 10px; }
   h1 { font-size: 21px; margin: 0 0 2px; letter-spacing: -.02em; }
   .sub { color: var(--muted); font-size: 13px; }
+
+  .tabs {
+    display: flex; gap: 4px; margin: 10px 0 12px; padding: 3px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .tab {
+    flex: 1; font: inherit; font-size: 14px; font-weight: 650; padding: 8px;
+    background: transparent; color: var(--muted); border: 0; border-radius: 8px;
+    cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--surface); color: var(--text); }
+
+  .board-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 11px 13px; margin-bottom: 9px;
+  }
+  .board-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+  .board-league { font-weight: 700; font-size: 15px; letter-spacing: -.01em; }
+  .board-platform {
+    margin-left: auto; font-size: 9.5px; font-weight: 800; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+    background: var(--surface-2); border: 1px solid var(--line);
+    padding: 2px 6px; border-radius: 5px;
+  }
+  .board-row {
+    display: flex; align-items: baseline; gap: 8px; padding: 3px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .board-row .who { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .board-row.mine .who { color: var(--for); }
+  .board-row .proj { color: var(--muted); font-size: 11.5px; margin-left: auto; white-space: nowrap; }
+  .board-row .pts { font-size: 17px; font-weight: 750; min-width: 52px; text-align: right; }
+
+  .winbar {
+    height: 6px; border-radius: 3px; background: var(--against);
+    margin: 9px 0 5px; overflow: hidden;
+  }
+  .winbar span { display: block; height: 100%; background: var(--for); }
+  .winline {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--muted);
+  }
+  .winline b { color: var(--text); font-size: 12.5px; }
+  .est {
+    font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--both); background: var(--both-dim); padding: 1px 5px; border-radius: 4px;
+  }
+
+  .board-toggle {
+    width: 100%; margin-top: 9px; font: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 7px; background: var(--surface-2); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+  }
+  .lineups { margin-top: 9px; }
+  .lineup h5 {
+    margin: 9px 0 4px; font-size: 9.5px; font-weight: 800; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .lineup h5.mine { color: var(--for); }
+  .starter {
+    display: flex; align-items: baseline; gap: 7px; padding: 4px 6px;
+    border-radius: 6px; font-size: 12.5px;
+  }
+  .starter:nth-child(odd) { background: var(--surface-2); }
+  .starter .slot {
+    font-size: 10px; font-weight: 800; color: var(--muted);
+    min-width: 30px; font-variant-numeric: tabular-nums;
+  }
+  .starter .nm { font-weight: 600; overflow-wrap: anywhere; }
+  .starter .sub { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .starter .sc {
+    margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .starter .sc.pending { color: var(--muted); font-weight: 600; }
+  .board-note { color: var(--muted); font-size: 11.5px; margin: 14px 4px 0; line-height: 1.5; }
 
   .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
   .chip {
@@ -223,24 +302,29 @@
     <div class="chips" id="chips"></div>
   </header>
 
+  <nav class="tabs" role="tablist">
+    <button class="tab" id="tab-players" role="tab" type="button">Players</button>
+    <button class="tab" id="tab-scoreboard" role="tab" type="button">Scoreboard</button>
+  </nav>
+
   <input id="search" type="search" placeholder="Search player, team or league" autocomplete="off">
 
   <div class="filters">
     <div class="field"><label for="f-week">Week</label><select id="f-week"></select></div>
-    <div class="field"><label for="f-day">Day</label><select id="f-day"></select></div>
-    <div class="field"><label for="f-league">League</label><select id="f-league"></select></div>
-    <div class="field"><label for="f-side">For / Against</label><select id="f-side">
+    <div class="field players-only"><label for="f-day">Day</label><select id="f-day"></select></div>
+    <div class="field players-only"><label for="f-league">League</label><select id="f-league"></select></div>
+    <div class="field players-only"><label for="f-side">For / Against</label><select id="f-side">
       <option value="all">All players</option>
       <option value="for">For me</option>
       <option value="against">Against me</option>
       <option value="both">Conflict</option>
     </select></div>
-    <div class="field"><label for="f-slot">Roster spot</label><select id="f-slot">
+    <div class="field players-only"><label for="f-slot">Roster spot</label><select id="f-slot">
       <option value="all">Starters &amp; bench</option>
       <option value="starters">Starters only</option>
       <option value="bench">Bench only</option>
     </select></div>
-    <div class="field"><label for="f-injury">Injury</label><select id="f-injury">
+    <div class="field players-only"><label for="f-injury">Injury</label><select id="f-injury">
       <option value="all">Any status</option>
       <option value="injured">Injured (any)</option>
       <option value="out">Out or doubtful</option>
@@ -252,6 +336,7 @@
   <div id="changes"></div>
   <div id="errors"></div>
   <main id="list"></main>
+  <main id="board" hidden></main>
   <footer id="footer"></footer>
 
   <section class="notif" id="notif">
@@ -408,8 +493,133 @@ function cardHtml(p) {
   </article>`;
 }
 
+/* ---- scoreboard ------------------------------------------------------- */
+
+// Which league cards are expanded, kept across refreshes so a two-minute
+// re-fetch does not collapse what you opened.
+const expanded = new Set();
+
+function starterHtml(player) {
+  const played = player.game_state && player.game_state !== "pre";
+  const score = played
+    ? `<span class="sc">${(Number(player.points) || 0).toFixed(1)}</span>`
+    : `<span class="sc pending">${esc(player.kickoff_label || "—")}</span>`;
+  const injury = player.injury_status
+    ? ` <span class="sub" style="color:var(--against)">${esc(player.injury_status)}</span>`
+    : "";
+  return `<div class="starter">
+    <span class="slot">${esc(player.slot || "")}</span>
+    <span class="nm">${esc(player.name)}</span>
+    <span class="sub">${esc(player.position)}${player.team ? " · " + esc(player.team) : ""}</span>
+    ${injury}${score}
+  </div>`;
+}
+
+function lineupHtml(side, mine) {
+  return `<div class="lineup">
+    <h5 class="${mine ? "mine" : ""}">${esc(side.name)}</h5>
+    ${side.starters.map(starterHtml).join("")}
+  </div>`;
+}
+
+function boardCardHtml(entry) {
+  const pct = Math.round(entry.win_probability * 100);
+  const estimated = entry.win_probability_source === "estimated";
+  const open = expanded.has(entry.league);
+
+  const row = (side, mine) => `<div class="board-row${mine ? " mine" : ""}">
+      <span class="who">${esc(side.name)}</span>
+      <span class="proj">proj ${side.projected === null ? "—" : side.projected}</span>
+      <span class="pts">${side.points === null ? "—" : side.points.toFixed(1)}</span>
+    </div>`;
+
+  return `<article class="board-card" data-league="${esc(entry.league)}">
+    <div class="board-top">
+      <span class="board-league">${esc(entry.league)}</span>
+      <span class="board-platform">${esc(entry.platform)}</span>
+    </div>
+    ${row(entry.me, true)}
+    ${row(entry.opponent, false)}
+    <div class="winbar"><span style="width:${pct}%"></span></div>
+    <div class="winline">
+      <b>${pct}%</b> to win
+      ${estimated ? '<span class="est">estimated</span>' : ""}
+      <span style="margin-left:auto">${entry.starters_played}/${entry.starters_total} started</span>
+    </div>
+    <button class="board-toggle" type="button">
+      ${open ? "Hide lineups" : "Show lineups"}
+    </button>
+    <div class="lineups" ${open ? "" : "hidden"}>
+      ${lineupHtml(entry.me, true)}
+      ${lineupHtml(entry.opponent, false)}
+    </div>
+  </article>`;
+}
+
+function renderScoreboard() {
+  const board = weekReport().scoreboard || [];
+  const week = el("f-week").value;
+
+  el("subtitle").textContent =
+    `Week ${week} · ${board.length} matchup${board.length === 1 ? "" : "s"}`;
+  el("chips").innerHTML = "";
+
+  if (!board.length) {
+    el("board").innerHTML =
+      `<div class="empty-state"><div class="big">🏈</div>
+       <div>No matchups found for this week.</div></div>`;
+    return;
+  }
+
+  const anyEstimated = board.some(e => e.win_probability_source === "estimated");
+  el("board").innerHTML = board.map(boardCardHtml).join("") +
+    (anyEstimated
+      ? `<p class="board-note">ESPN publishes a win probability and it is shown as-is.
+         Sleeper publishes none, so those are estimated here from Sleeper's own
+         player projections and the games still to play.</p>`
+      : "");
+}
+
+el("board").addEventListener("click", event => {
+  const button = event.target.closest(".board-toggle");
+  if (!button) return;
+  const card = button.closest(".board-card");
+  const league = card.getAttribute("data-league");
+  if (expanded.has(league)) expanded.delete(league); else expanded.add(league);
+  renderScoreboard();
+});
+
+/* ---- tabs -------------------------------------------------------------- */
+
+let activeTab = "players";
+
+function setTab(name) {
+  activeTab = name;
+  try { localStorage.setItem("tab", name); } catch (err) { /* private mode */ }
+
+  el("tab-players").setAttribute("aria-selected", String(name === "players"));
+  el("tab-scoreboard").setAttribute("aria-selected", String(name === "scoreboard"));
+
+  const players = name === "players";
+  el("list").hidden = !players;
+  el("board").hidden = players;
+  el("search").hidden = !players;
+  el("reset").hidden = !players;
+  el("changes").hidden = !players;
+  // Only the week filter is meaningful on the scoreboard.
+  document.querySelectorAll(".players-only").forEach(node => {
+    node.hidden = !players;
+  });
+
+  render();
+}
+
+el("tab-players").addEventListener("click", () => setTab("players"));
+el("tab-scoreboard").addEventListener("click", () => setTab("scoreboard"));
+
 function render() {
   if (!BUNDLE) return;
+  if (activeTab === "scoreboard") { renderScoreboard(); return; }
 
   const days = visibleDays();
   const showDayHeads = days.length > 1;
@@ -586,7 +796,10 @@ function paint(bundle) {
     .map(e => `<div class="err">${esc(e)}</div>`).join("");
 
   el("footer").textContent = `Updated ${bundle.generated_label}`;
-  render();
+
+  let saved = "players";
+  try { saved = localStorage.getItem("tab") || "players"; } catch (err) { /* ignore */ }
+  setTab(saved === "scoreboard" ? "scoreboard" : "players");
 }
 
 el("f-week").addEventListener("change", () => {

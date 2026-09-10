@@ -34,6 +34,38 @@ def get_players():
     )
 
 
+PROJECTION_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
+
+
+def get_projections(season, week):
+    """Sleeper's published per-player projections for one week.
+
+    Keyed by player id, holding the three scoring variants Sleeper publishes.
+    Sleeper exposes no win probability of its own, so these are what an estimate
+    has to be built from.
+    """
+    query = "&".join("position[]=%s" % p for p in PROJECTION_POSITIONS)
+    url = ("https://api.sleeper.app/projections/nfl/%s/%s"
+           "?season_type=regular&%s" % (season, week, query))
+    try:
+        rows = get_json_cached(url, 60 * 60, "sleeper_proj_%s_%s" % (season, week))
+    except FetchError:
+        return {}
+
+    projections = {}
+    for row in rows or []:
+        player_id = str(row.get("player_id") or "")
+        stats = row.get("stats") or {}
+        if not player_id:
+            continue
+        projections[player_id] = {
+            "pts_ppr": stats.get("pts_ppr"),
+            "pts_half_ppr": stats.get("pts_half_ppr"),
+            "pts_std": stats.get("pts_std"),
+        }
+    return projections
+
+
 def get_leagues(user_id, season):
     return get_json("%s/user/%s/leagues/nfl/%s" % (BASE, user_id, season)) or []
 
@@ -86,6 +118,24 @@ def build_roster_slots(league, roster, starters):
         slots.setdefault(player_id, "BN")
 
     return slots
+
+
+def scoring_type(league):
+    """Which of Sleeper's public projection columns matches this league.
+
+    Sleeper publishes projections as pts_ppr / pts_half_ppr / pts_std, so the
+    league's reception value decides which one to read.
+    """
+    rec = (league.get("scoring_settings") or {}).get("rec")
+    try:
+        rec = float(rec)
+    except (TypeError, ValueError):
+        rec = 0.0
+    if rec >= 0.75:
+        return "pts_ppr"
+    if rec >= 0.25:
+        return "pts_half_ppr"
+    return "pts_std"
 
 
 def owns_roster(roster, user_id):
@@ -159,12 +209,36 @@ def load_league(league, user_id, week):
     def owner_label(roster):
         return display_names.get(roster.get("owner_id"), "Opponent")
 
+    def side(roster, label):
+        """One team in the week's matchup: its score and starting lineup."""
+        entry = by_roster_id.get(roster.get("roster_id")) or {}
+        starters = starters_for(roster)
+        starter_points = entry.get("starters_points") or []
+        lineup = []
+        labels = _slot_labels(league.get("roster_positions") or [])
+        for index, player_id in enumerate(starters):
+            lineup.append({
+                "player_id": player_id if player_id and player_id != "0" else None,
+                "slot": labels[index] if index < len(labels) else "STARTER",
+                "points": (starter_points[index]
+                           if index < len(starter_points) else None),
+            })
+        total = entry.get("points")
+        if total is None:
+            total = sum(p for p in starter_points if p) if starter_points else None
+        return {"name": label, "points": total, "starters": lineup}
+
     return {
         "platform": "sleeper",
         "league_id": str(league_id),
         "league_name": league.get("name") or "Sleeper league",
         "week": week,
         "points": points,
+        "scoring_type": scoring_type(league),
+        "matchup": {
+            "me": side(my_roster, display_names.get(user_id, "My team")),
+            "opponents": [side(r, owner_label(r)) for r in opponents],
+        },
         "my_slots": build_roster_slots(league, my_roster, starters_for(my_roster)),
         "opponents": [
             {

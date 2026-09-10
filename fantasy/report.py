@@ -15,6 +15,7 @@ import unicodedata
 from . import espn as espn_client
 from . import lineups as lineups_module
 from . import schedule as schedule_module
+from . import scoreboard as scoreboard_module
 from . import sleeper as sleeper_client
 from .webreq import FetchError
 
@@ -402,10 +403,19 @@ def build_week(config, season, week, tz, changes_for_date=None):
 
     days = []
     names_by_date = {}
+    week_games = {}
     for local_date, games in schedule_module.games_in_week(season, week, tz):
         day, todays_names = assembler.day(local_date, games, tz)
         days.append(day)
         names_by_date[local_date.isoformat()] = todays_names
+        # Matchup lineups span the whole week, not one day.
+        week_games.update(schedule_module.index_by_team(games))
+
+    projections = sleeper_client.get_projections(season, week)
+    board = scoreboard_module.build(
+        leagues,
+        scoreboard_module.Resolver(assembler, week_games, projections, tz),
+    )
 
     changes = []
     # Demo runs share nothing with real data, snapshots included.
@@ -424,6 +434,7 @@ def build_week(config, season, week, tz, changes_for_date=None):
         "week": int(week),
         "season": str(season),
         "days": days,
+        "scoreboard": board,
         "leagues": _league_summary(leagues),
         "bench": {"mine": include_my_bench, "opponent": include_opponent_bench},
         "changes": changes,
