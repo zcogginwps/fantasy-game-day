@@ -6,6 +6,10 @@ on:
   # anything is actually worth sending.
   schedule:
     - cron: "*/30 12-23,0-6 * * *"
+  # Deploy code changes straight away rather than waiting for the next tick.
+  # The job's own state commits say [skip ci], so this does not loop.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       force:
