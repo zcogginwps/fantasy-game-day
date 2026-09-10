@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Build the day's report, and optionally keep watching for late lineup moves.
+"""Build the week's report, and optionally keep watching for late lineup moves.
 
-    python3 collect.py                 today's report
-    python3 collect.py --print         also print a text summary
+    python3 collect.py                 this week
+    python3 collect.py --print         also print today's summary
+    python3 collect.py --weeks 1-4     also collect other weeks
     python3 collect.py --watch         keep checking until the last kickoff
-    python3 collect.py --date 2026-09-13
 """
 
 import argparse
 import datetime
-import json
-import os
 import sys
 import time
 
+from fantasy import bundle as bundle_module
 from fantasy import config as config_module
 from fantasy import notify
 from fantasy import report as report_module
@@ -27,8 +26,8 @@ def resolve_week(target_date, override):
         return override
     state = sleeper.get_state()
     week = int(state.get("week") or 1)
-    # Sleeper rolls its week over on Tuesday, so stepping forward to a future
-    # date means counting the Tuesdays in between.
+    # Sleeper rolls its week over on Tuesday, so stepping to a future date means
+    # counting the Tuesdays in between.
     today = datetime.date.today()
     if target_date > today:
         cursor = today
@@ -39,13 +38,40 @@ def resolve_week(target_date, override):
     return max(1, min(week, 18))
 
 
-def text_summary(data):
-    lines = ["%s - Week %s" % (data["date_label"], data["week"]),
+def build_and_save(conf, season, weeks, tz, current_week, current_date):
+    """Build the requested weeks and fold them into the saved bundle."""
+    reports = []
+    for week in weeks:
+        reports.append(report_module.build_week(
+            conf, season, week, tz,
+            # Lineup diffing only makes sense for the day being watched.
+            changes_for_date=current_date if week == current_week else None,
+        ))
+    demo = bool(conf.get("demo"))
+    merged = bundle_module.merge(
+        bundle_module.load(demo), reports, season, tz, current_week, current_date)
+    bundle_module.save(merged, demo)
+    return merged
+
+
+def day_summary(day, week):
+    if not day:
+        return "No NFL games today."
+    counts = day["counts"]
+    return "%s: %d players (%d for, %d against, %d conflicted) - week %s" % (
+        day["date_label"], counts["total"], counts["for"],
+        counts["against"], counts["both"], week)
+
+
+def text_summary(day, week, change_lines, errors):
+    if not day:
+        return "No NFL games today."
+    lines = ["%s - Week %s" % (day["date_label"], week),
              "%d games, %d relevant players" % (
-                 len(data["games"]), data["counts"]["total"]),
+                 len(day["games"]), day["counts"]["total"]),
              ""]
     symbol = {"for": "[FOR]", "against": "[AGAINST]", "both": "[BOTH]"}
-    for player in data["players"]:
+    for player in day["players"]:
         parts = ["%-9s %-22s %-3s %-4s %-8s" % (
             symbol[player["verdict"]], player["name"], player["position"],
             player["team"], player["kickoff_label"])]
@@ -56,62 +82,30 @@ def text_summary(data):
         for entry in player["against_me"]:
             parts.append("-%s:%s" % (entry["league"], entry["slot"]))
         lines.append(" ".join(parts))
-    if data["change_lines"]:
+    if change_lines:
         lines.append("")
         lines.append("Lineup changes since the last check:")
-        for line in data["change_lines"]:
+        for line in change_lines:
             lines.append("  * %s" % line)
-    for err in data["errors"]:
+    for err in errors:
         lines.append("! %s" % err)
     return "\n".join(lines)
 
 
-def write_report(data):
-    if not os.path.isdir(config_module.DATA_DIR):
-        os.makedirs(config_module.DATA_DIR)
-    out = os.path.join(config_module.DATA_DIR, "report.json")
-    tmp = out + ".tmp"
-    with open(tmp, "w") as handle:
-        json.dump(data, handle, indent=1)
-    os.replace(tmp, out)
-
-    archive = os.path.join(config_module.DATA_DIR, "report-%s.json" % data["date"])
-    with open(archive, "w") as handle:
-        json.dump(data, handle)
-    return out
-
-
-def summarise(data):
-    return "%s: %d players across %d leagues (%d for, %d against, %d conflicted)" % (
-        data["date_label"], data["counts"]["total"], len(data["leagues"]),
-        data["counts"]["for"], data["counts"]["against"], data["counts"]["both"])
-
-
-def run_once(conf, target, season, week, tz):
-    data = report_module.build(conf, target, season, week, tz)
-    write_report(data)
-    return data
-
-
-def watch(conf, target, season, week, tz, every_minutes, lead_minutes):
-    """Poll until the day's last game has started.
-
-    Two kinds of alert: an opponent changing their lineup, and a heads-up as
-    each game is about to kick off.
-    """
+def watch(conf, season, tz, week, today, every_minutes, lead_minutes):
+    """Poll until the day's last game has started."""
     notified_kickoffs = set()
 
-    data = run_once(conf, target, season, week, tz)
-    print(summarise(data))
+    merged = build_and_save(conf, season, [week], tz, week, today)
+    day = bundle_module.find_day(merged, week, today.isoformat())
+    print(day_summary(day, week))
 
-    if not data["games"]:
+    if not day or not day["games"]:
         print("No NFL games today - nothing to watch.")
-        return data
+        return merged, day
 
-    kickoffs = {}
-    for game in data["games"]:
-        kickoffs[game["label"]] = datetime.datetime.fromisoformat(
-            game["kickoff_utc"])
+    kickoffs = {g["label"]: datetime.datetime.fromisoformat(g["kickoff_utc"])
+                for g in day["games"]}
     last_kickoff = max(kickoffs.values())
 
     print("\nWatching %d game%s. Checking every %d minutes." % (
@@ -128,7 +122,7 @@ def watch(conf, target, season, week, tz, every_minutes, lead_minutes):
                 continue
             minutes_out = (kickoff - now).total_seconds() / 60.0
             if 0 < minutes_out <= lead_minutes:
-                in_game = [p for p in data["players"] if p["game_label"] == label]
+                in_game = [p for p in day["players"] if p["game_label"] == label]
                 notify.kickoff_summary(label, in_game)
                 print("  [%s] kickoff alert: %s (%d players)" % (
                     datetime.datetime.now(tz).strftime("%-I:%M %p"),
@@ -137,25 +131,28 @@ def watch(conf, target, season, week, tz, every_minutes, lead_minutes):
 
         if now > last_kickoff:
             print("\nLast game has kicked off. Done watching.")
-            return data
+            return merged, day
 
         time.sleep(every_minutes * 60)
 
-        data = run_once(conf, target, season, week, tz)
+        merged = build_and_save(conf, season, [week], tz, week, today)
+        day = bundle_module.find_day(merged, week, today.isoformat()) or day
         stamp = datetime.datetime.now(tz).strftime("%-I:%M %p")
-        if data["changes"]:
-            print("  [%s] %d lineup change(s):" % (stamp, len(data["changes"])))
-            for line in data["change_lines"]:
+        change_lines = merged.get("change_lines") or []
+        if change_lines:
+            print("  [%s] %d lineup change(s):" % (stamp, len(change_lines)))
+            for line in change_lines:
                 print("      * %s" % line)
-            notify.lineup_change_alert(data["changes"])
+            notify.lineup_change_alert(merged.get("changes") or [])
         else:
             print("  [%s] no changes" % stamp)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build the daily fantasy report.")
+    parser = argparse.ArgumentParser(description="Build the fantasy report.")
     parser.add_argument("--date", help="YYYY-MM-DD (default: today)")
-    parser.add_argument("--week", type=int, help="Override the fantasy week")
+    parser.add_argument("--week", type=int, help="Override the current week")
+    parser.add_argument("--weeks", help='Also collect these weeks, e.g. "1-4" or "all"')
     parser.add_argument("--season", help="Override the season year")
     parser.add_argument("--print", dest="show", action="store_true",
                         help="Print a text summary to the terminal")
@@ -168,7 +165,7 @@ def main():
     parser.add_argument("--lead", type=int, default=15,
                         help="Minutes before kickoff to alert (default 15)")
     parser.add_argument("--notify", action="store_true",
-                        help="Send a Mac notification summarising the report")
+                        help="Send a Mac notification summarising the day")
     args = parser.parse_args()
 
     if args.demo:
@@ -190,38 +187,51 @@ def main():
 
     if args.date:
         try:
-            target = datetime.datetime.strptime(args.date, "%Y-%m-%d").date()
+            today = datetime.datetime.strptime(args.date, "%Y-%m-%d").date()
         except ValueError:
             print("--date must look like 2026-09-13", file=sys.stderr)
             return 2
     else:
-        target = datetime.datetime.now(tz).date()
+        today = datetime.datetime.now(tz).date()
 
-    season = args.season or sleeper.get_state().get("season") or str(target.year)
-    week = resolve_week(target, args.week)
+    season = args.season or sleeper.get_state().get("season") or str(today.year)
+    week = resolve_week(today, args.week)
 
     if args.watch:
-        data = watch(conf, target, season, week, tz, args.every, args.lead)
+        merged, day = watch(conf, season, tz, week, today, args.every, args.lead)
     else:
-        data = run_once(conf, target, season, week, tz)
-        print(summarise(data))
-        if data["change_lines"]:
-            print("Lineup changes since the last check:")
-            for line in data["change_lines"]:
-                print("  * %s" % line)
-        if args.notify and data["counts"]["total"]:
-            notify.mac_notification(
-                data["date_label"],
-                "%d for you, %d against you, %d conflicted" % (
-                    data["counts"]["for"], data["counts"]["against"],
-                    data["counts"]["both"]),
-                subtitle="Week %s" % data["week"])
+        weeks = [week]
+        for extra in bundle_module.parse_weeks(args.weeks):
+            if extra not in weeks:
+                weeks.append(extra)
+        if len(weeks) > 1:
+            print("Collecting weeks: %s" % ", ".join(str(w) for w in weeks))
 
-    for err in data["errors"]:
+        merged = build_and_save(conf, season, weeks, tz, week, today)
+        day = bundle_module.find_day(merged, week, today.isoformat())
+
+        print(day_summary(day, week))
+        collected = sorted(int(k) for k in merged["weeks"])
+        print("Weeks available in the app: %s" % ", ".join(str(w) for w in collected))
+
+        if merged.get("change_lines"):
+            print("Lineup changes since the last check:")
+            for line in merged["change_lines"]:
+                print("  * %s" % line)
+        if args.notify and day and day["counts"]["total"]:
+            notify.mac_notification(
+                day["date_label"],
+                "%d for you, %d against you, %d conflicted" % (
+                    day["counts"]["for"], day["counts"]["against"],
+                    day["counts"]["both"]),
+                subtitle="Week %s" % week)
+
+    for err in merged.get("errors") or []:
         print("  ! %s" % err, file=sys.stderr)
     if args.show:
         print()
-        print(text_summary(data))
+        print(text_summary(day, week, merged.get("change_lines") or [],
+                           merged.get("errors") or []))
     return 0
 
 

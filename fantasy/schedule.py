@@ -96,6 +96,31 @@ def games_on(local_date, tz):
     return found
 
 
+def games_in_week(season, week, tz):
+    """Every game in a fantasy week, grouped by the local date it falls on.
+
+    Returns [(date, [Game, ...]), ...] in calendar order. A week spans Thursday
+    to Monday, and occasionally a Wednesday opener.
+    """
+    url = "%s?limit=100&week=%d&seasontype=2&dates=%s" % (SCOREBOARD, int(week), season)
+    payload = get_json(url)
+
+    by_day = {}
+    for event in payload.get("events", []):
+        try:
+            game = _parse_event(event)
+        except (KeyError, IndexError, ValueError):
+            continue
+        local_date = game.kickoff_utc.astimezone(tz).date()
+        by_day.setdefault(local_date, []).append(game)
+
+    days = []
+    for local_date in sorted(by_day):
+        games = sorted(by_day[local_date], key=lambda g: g.kickoff_utc)
+        days.append((local_date, games))
+    return days
+
+
 def index_by_team(games):
     """Map each participating team abbreviation to its game."""
     lookup = {}

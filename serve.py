@@ -26,7 +26,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # The single dynamic route: the generated report lives outside web/.
         clean = path.split("?", 1)[0].split("#", 1)[0]
         if clean == "/api/report.json":
-            return os.path.join(DATA_DIR, "report.json")
+            real = os.path.join(DATA_DIR, "report.json")
+            if os.path.exists(real):
+                return real
+            # Nothing collected yet: show the demo if one was built.
+            return os.path.join(DATA_DIR, "report-demo.json")
         return super().translate_path(path)
 
     def end_headers(self):

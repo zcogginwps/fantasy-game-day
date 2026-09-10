@@ -157,180 +157,250 @@ def _bench_settings(config):
     return bool(mine), bool(theirs)
 
 
-def build(config, target_date, season, week, tz):
-    """Assemble the full report for one calendar day."""
-    errors = []
-    games = schedule_module.games_on(target_date, tz)
-    games_by_team = schedule_module.index_by_team(games)
+class Assembler(object):
+    """Turns loaded leagues into per-day player rows.
 
-    if config.get("demo"):
-        from . import demo as demo_module
-        leagues, sleeper_players = demo_module.build_leagues(target_date, tz)
-    else:
-        leagues, sleeper_players = _collect_leagues(config, season, week, errors)
+    Leagues are fetched once per week; this walks each game day in that week
+    against the same roster data.
+    """
 
-    # Two ways into Sleeper's data, because espn_id is not always present.
-    by_espn_id = {}
-    by_name = {}
-    for player_id, player in sleeper_players.items():
-        if player.get("espn_id"):
-            by_espn_id[str(player["espn_id"])] = player_id
-        record = sleeper_client.player_record(player)
-        by_name.setdefault(_name_key(record), player_id)
+    def __init__(self, leagues, sleeper_players, config):
+        self.leagues = leagues
+        self.sleeper_players = sleeper_players
+        self.include_my_bench, self.include_opponent_bench = _bench_settings(config)
 
-    def record_for(id_source, player_id, league):
+        # Two ways into Sleeper's data, because espn_id is not always present.
+        self.by_espn_id = {}
+        self.by_name = {}
+        for player_id, player in sleeper_players.items():
+            if player.get("espn_id"):
+                self.by_espn_id[str(player["espn_id"])] = player_id
+            record = sleeper_client.player_record(player)
+            self.by_name.setdefault(_name_key(record), player_id)
+
+    def record_for(self, id_source, player_id, league):
         """The best available player record for a platform-local id."""
         if id_source == "sleeper":
-            player = sleeper_players.get(player_id)
+            player = self.sleeper_players.get(player_id)
             return sleeper_client.player_record(player) if player else None
 
         raw = (league.get("players") or {}).get(str(player_id))
 
-        # Prefer Sleeper's copy: the user wants injury status to come from
-        # Sleeper even for players they roster on ESPN.
-        sleeper_id = by_espn_id.get(str(player_id))
+        # Prefer Sleeper's copy: injury status should come from Sleeper even
+        # for players rostered on ESPN.
+        sleeper_id = self.by_espn_id.get(str(player_id))
         if not sleeper_id and raw:
-            sleeper_id = by_name.get(_name_key(espn_client.player_record(raw)))
-        if sleeper_id and sleeper_id in sleeper_players:
-            return sleeper_client.player_record(sleeper_players[sleeper_id])
+            sleeper_id = self.by_name.get(_name_key(espn_client.player_record(raw)))
+        if sleeper_id and sleeper_id in self.sleeper_players:
+            return sleeper_client.player_record(self.sleeper_players[sleeper_id])
 
         return espn_client.player_record(raw) if raw else None
 
-    include_my_bench, include_opponent_bench = _bench_settings(config)
+    def name_lookup(self, id_source, player_id, league):
+        record = self.record_for(id_source, player_id, league)
+        return record["name"] if record else None
 
-    row_index = {}
-    # Every rostered player whose NFL team plays today, regardless of whether
-    # the bench settings will show them. Lineup changes are judged against this
-    # so that an opponent benching a starter still counts as news.
-    todays_names = set()
+    def day(self, target_date, games, tz):
+        """Assemble one game day. Returns (day_dict, names_playing_today)."""
+        games_by_team = schedule_module.index_by_team(games)
 
-    def resolve(record):
-        keys = candidate_keys(record)
-        row = None
-        for key in keys:
-            if key in row_index:
-                row = row_index[key]
-                break
-        if row is None:
-            row = PlayerRow(record)
-        else:
-            row.merge_record(record)
-        for key in keys:
-            row_index[key] = row  # File under every alias so later ids match.
-        return row
+        row_index = {}
+        # Every rostered player whose NFL team plays today, regardless of the
+        # bench settings, so an opponent benching a starter still counts as news.
+        todays_names = set()
 
-    for league in leagues:
-        id_source = league.get("id_source") or league["platform"]
-        league_label = league["league_name"]
+        def resolve(record):
+            keys = candidate_keys(record)
+            row = None
+            for key in keys:
+                if key in row_index:
+                    row = row_index[key]
+                    break
+            if row is None:
+                row = PlayerRow(record)
+            else:
+                row.merge_record(record)
+            for key in keys:
+                row_index[key] = row  # File under every alias so later ids match.
+            return row
 
-        for player_id, slot in (league.get("my_slots") or {}).items():
-            record = record_for(id_source, player_id, league)
-            if not record:
-                continue
-            if games_by_team.get(record.get("team")):
-                todays_names.add(record["name"])
-            if not include_my_bench and not _is_starting(slot):
-                continue
-            resolve(record).for_me.append({
-                "league": league_label, "platform": league["platform"],
-                "slot": slot, "starting": _is_starting(slot),
-            })
+        for league in self.leagues:
+            id_source = league.get("id_source") or league["platform"]
+            league_label = league["league_name"]
 
-        for opponent in league.get("opponents") or []:
-            for player_id, slot in (opponent.get("slots") or {}).items():
-                record = record_for(id_source, player_id, league)
+            for player_id, slot in (league.get("my_slots") or {}).items():
+                record = self.record_for(id_source, player_id, league)
                 if not record:
                     continue
                 if games_by_team.get(record.get("team")):
                     todays_names.add(record["name"])
-                if not include_opponent_bench and not _is_starting(slot):
+                if not self.include_my_bench and not _is_starting(slot):
                     continue
-                resolve(record).against_me.append({
+                resolve(record).for_me.append({
                     "league": league_label, "platform": league["platform"],
-                    "slot": slot, "opponent": opponent["name"],
-                    "starting": _is_starting(slot),
+                    "slot": slot, "starting": _is_starting(slot),
                 })
 
-    # Late lineup moves: compare against what we saw on the previous run.
-    def name_lookup(id_source, player_id, league):
-        record = record_for(id_source, player_id, league)
-        return record["name"] if record else None
+            for opponent in league.get("opponents") or []:
+                for player_id, slot in (opponent.get("slots") or {}).items():
+                    record = self.record_for(id_source, player_id, league)
+                    if not record:
+                        continue
+                    if games_by_team.get(record.get("team")):
+                        todays_names.add(record["name"])
+                    if not self.include_opponent_bench and not _is_starting(slot):
+                        continue
+                    resolve(record).against_me.append({
+                        "league": league_label, "platform": league["platform"],
+                        "slot": slot, "opponent": opponent["name"],
+                        "starting": _is_starting(slot),
+                    })
 
-    snapshot = lineups_module.capture(leagues, name_lookup)
+        # One row can be filed under several keys, so collapse to unique rows.
+        unique_rows = list({id(row): row for row in row_index.values()}.values())
+
+        players = []
+        for row in unique_rows:
+            if not row.for_me and not row.against_me:
+                continue
+            team = row.record.get("team")
+            game = games_by_team.get(team)
+            if game is None:
+                continue  # Not playing this day - the whole point of the filter.
+
+            game_dict = game.to_dict(tz)
+            opponent_team = game.opponent_of(team)
+            players.append({
+                "name": row.record["name"],
+                "position": row.record.get("position") or "",
+                "team": team,
+                "injury_status": row.record.get("injury_status") or "",
+                "injury_body_part": row.record.get("injury_body_part") or "",
+                "injury_source": row.record.get("source") or "",
+                "verdict": row.verdict,
+                "kickoff_utc": game_dict["kickoff_utc"],
+                "kickoff_label": game_dict["kickoff_label"],
+                "game_label": game_dict["label"],
+                "game_state": game_dict["state"],
+                "matchup": "%s %s" % (
+                    "vs" if game.is_home(team) else "@", opponent_team),
+                "for_me": sorted(row.for_me, key=lambda e: e["league"]),
+                "against_me": sorted(row.against_me, key=lambda e: e["league"]),
+                "starting_anywhere": any(
+                    e["starting"] for e in row.for_me + row.against_me),
+            })
+
+        players.sort(key=lambda p: (
+            p["kickoff_utc"],
+            0 if p["starting_anywhere"] else 1,
+            POSITION_ORDER.get(p["position"], 9),
+            p["name"],
+        ))
+
+        return {
+            "date": target_date.isoformat(),
+            "date_label": target_date.strftime("%A, %B %-d"),
+            "short_label": target_date.strftime("%a %-m/%-d"),
+            "games": [g.to_dict(tz) for g in games],
+            "players": players,
+            "counts": _counts(players),
+        }, todays_names
+
+
+def _counts(players):
+    return {
+        "total": len(players),
+        "for": len([p for p in players if p["verdict"] == "for"]),
+        "against": len([p for p in players if p["verdict"] == "against"]),
+        "both": len([p for p in players if p["verdict"] == "both"]),
+    }
+
+
+def _league_summary(leagues):
+    return [
+        {
+            "name": l["league_name"],
+            "platform": l["platform"],
+            "opponents": [o["name"] for o in l.get("opponents") or []],
+        }
+        for l in leagues
+    ]
+
+
+def _load(config, season, week, tz, errors):
+    """Leagues plus the Sleeper player dictionary, for one week."""
+    if config.get("demo"):
+        from . import demo as demo_module
+        return demo_module.build_leagues_for_week(season, week, tz)
+    return _collect_leagues(config, season, week, errors)
+
+
+def build_week(config, season, week, tz, changes_for_date=None):
+    """Every game day in one fantasy week, sharing a single league fetch."""
+    errors = []
+    leagues, sleeper_players = _load(config, season, week, tz, errors)
+    assembler = Assembler(leagues, sleeper_players, config)
+
+    days = []
+    names_by_date = {}
+    for local_date, games in schedule_module.games_in_week(season, week, tz):
+        day, todays_names = assembler.day(local_date, games, tz)
+        days.append(day)
+        names_by_date[local_date.isoformat()] = todays_names
+
+    changes = []
+    # Demo runs share nothing with real data, snapshots included.
+    if changes_for_date is not None and not config.get("demo"):
+        # Late lineup moves: compare against what the previous run saw.
+        snapshot = lineups_module.capture(leagues, assembler.name_lookup)
+        key = changes_for_date.isoformat()
+        previous = lineups_module.load(key)
+        raw_changes = lineups_module.diff(previous, snapshot)
+        lineups_module.save(key, snapshot)
+        relevant = names_by_date.get(key, set())
+        changes = [c for c in raw_changes if c["player"] in relevant]
+
+    include_my_bench, include_opponent_bench = _bench_settings(config)
+    return {
+        "week": int(week),
+        "season": str(season),
+        "days": days,
+        "leagues": _league_summary(leagues),
+        "bench": {"mine": include_my_bench, "opponent": include_opponent_bench},
+        "changes": changes,
+        "change_lines": [lineups_module.describe(c) for c in changes],
+        "errors": errors,
+    }
+
+
+def build(config, target_date, season, week, tz):
+    """A single day, in the flat shape the watch loop and notifications use."""
+    errors = []
+    leagues, sleeper_players = _load(config, season, week, tz, errors)
+    assembler = Assembler(leagues, sleeper_players, config)
+
+    games = schedule_module.games_on(target_date, tz)
+    day, todays_names = assembler.day(target_date, games, tz)
+
+    snapshot = lineups_module.capture(leagues, assembler.name_lookup)
     previous = lineups_module.load(target_date.isoformat())
-    changes = lineups_module.diff(previous, snapshot)
+    changes = [c for c in lineups_module.diff(previous, snapshot)
+               if c["player"] in todays_names]
     lineups_module.save(target_date.isoformat(), snapshot)
 
-    # One row can be filed under several keys, so collapse to unique rows.
-    unique_rows = list({id(row): row for row in row_index.values()}.values())
-
-    players = []
-    for row in unique_rows:
-        if not row.for_me and not row.against_me:
-            continue
-        team = row.record.get("team")
-        game = games_by_team.get(team)
-        if game is None:
-            continue  # Not playing today - the whole point of the filter.
-
-        game_dict = game.to_dict(tz)
-        opponent_team = game.opponent_of(team)
-        players.append({
-            "name": row.record["name"],
-            "position": row.record.get("position") or "",
-            "team": team,
-            "injury_status": row.record.get("injury_status") or "",
-            "injury_body_part": row.record.get("injury_body_part") or "",
-            "injury_source": row.record.get("source") or "",
-            "verdict": row.verdict,
-            "kickoff_utc": game_dict["kickoff_utc"],
-            "kickoff_label": game_dict["kickoff_label"],
-            "game_label": game_dict["label"],
-            "game_state": game_dict["state"],
-            "matchup": "%s %s" % ("vs" if game.is_home(team) else "@", opponent_team),
-            "for_me": sorted(row.for_me, key=lambda e: e["league"]),
-            "against_me": sorted(row.against_me, key=lambda e: e["league"]),
-            "starting_anywhere": any(
-                e["starting"] for e in row.for_me + row.against_me),
-        })
-
-    players.sort(key=lambda p: (
-        p["kickoff_utc"],
-        0 if p["starting_anywhere"] else 1,
-        POSITION_ORDER.get(p["position"], 9),
-        p["name"],
-    ))
-
-    # A change only matters today if that player is actually in a game today.
-    relevant_changes = [c for c in changes if c["player"] in todays_names]
-
-    return {
-        "date": target_date.isoformat(),
-        "date_label": target_date.strftime("%A, %B %-d"),
+    include_my_bench, include_opponent_bench = _bench_settings(config)
+    result = {
         "season": str(season),
         "week": week,
         "timezone": str(tz),
         "generated_at": datetime.datetime.now(tz).isoformat(),
         "generated_label": datetime.datetime.now(tz).strftime("%-I:%M %p"),
         "bench": {"mine": include_my_bench, "opponent": include_opponent_bench},
-        "games": [g.to_dict(tz) for g in games],
-        "leagues": [
-            {
-                "name": l["league_name"],
-                "platform": l["platform"],
-                "opponents": [o["name"] for o in l.get("opponents") or []],
-            }
-            for l in leagues
-        ],
-        "players": players,
-        "changes": relevant_changes,
-        "change_lines": [lineups_module.describe(c) for c in relevant_changes],
-        "counts": {
-            "total": len(players),
-            "for": len([p for p in players if p["verdict"] == "for"]),
-            "against": len([p for p in players if p["verdict"] == "against"]),
-            "both": len([p for p in players if p["verdict"] == "both"]),
-            "changes": len(relevant_changes),
-        },
+        "leagues": _league_summary(leagues),
+        "changes": changes,
+        "change_lines": [lineups_module.describe(c) for c in changes],
         "errors": errors,
     }
+    result.update(day)
+    result["counts"] = dict(day["counts"], changes=len(changes))
+    return result

@@ -42,13 +42,13 @@
     padding: max(env(safe-area-inset-top), 12px) 12px calc(env(safe-area-inset-bottom) + 32px);
     -webkit-font-smoothing: antialiased;
   }
-  .wrap { max-width: 780px; margin: 0 auto; }
+  .wrap { max-width: 820px; margin: 0 auto; }
 
-  header { padding: 6px 4px 14px; }
+  header { padding: 6px 4px 10px; }
   h1 { font-size: 21px; margin: 0 0 2px; letter-spacing: -.02em; }
   .sub { color: var(--muted); font-size: 13px; }
 
-  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
   .chip {
     font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
     background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
@@ -57,17 +57,46 @@
   .chip.against { color: var(--against); border-color: var(--against); background: var(--against-dim); }
   .chip.both { color: var(--both); border-color: var(--both); background: var(--both-dim); }
 
-  .controls { display: flex; gap: 8px; margin: 14px 0 8px; }
-  .controls input, .controls select {
-    flex: 1; min-width: 0; font: inherit; font-size: 14px; padding: 9px 11px;
-    background: var(--surface); color: var(--text);
-    border: 1px solid var(--line); border-radius: 10px;
+  .filters {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+    margin: 12px 0 6px;
   }
-  .controls select { flex: 0 0 auto; }
+  @media (min-width: 620px) { .filters { grid-template-columns: repeat(3, 1fr); } }
+  .field { min-width: 0; }
+  .field label {
+    display: block; font-size: 9.5px; font-weight: 800; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 3px 2px;
+  }
+  .field select, #search {
+    width: 100%; font: inherit; font-size: 14px; padding: 8px 10px;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; -webkit-appearance: none;
+    appearance: none; background-image:
+      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+    padding-right: 26px;
+  }
+  .field select.active { border-color: var(--text); }
+  #search {
+    background-image: none; padding-right: 10px; margin-bottom: 4px;
+    -webkit-appearance: none;
+  }
+  .reset {
+    display: block; width: 100%; margin: 2px 0 4px; padding: 7px;
+    font: inherit; font-size: 12.5px; font-weight: 600;
+    background: var(--surface-2); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 9px; cursor: pointer;
+  }
 
   .group-head {
     font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-    color: var(--muted); margin: 20px 4px 8px;
+    color: var(--muted); margin: 18px 4px 7px;
+  }
+  .day-head {
+    font-size: 14px; font-weight: 750; letter-spacing: -.01em; color: var(--text);
+    margin: 22px 4px 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
   }
 
   .card {
@@ -117,8 +146,6 @@
   .entry.bench { opacity: .5; }
   .entry .vs { color: var(--muted); font-size: 11.5px; }
 
-  .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
-  .empty-state .big { font-size: 40px; margin-bottom: 10px; }
   .changes {
     background: var(--surface); border: 1px solid var(--both);
     border-left: 4px solid var(--both); border-radius: 10px;
@@ -130,6 +157,9 @@
   }
   .changes div { font-size: 12.5px; line-height: 1.5; }
   .changes .mine { opacity: .65; }
+
+  .empty-state { text-align: center; padding: 44px 20px; color: var(--muted); }
+  .empty-state .big { font-size: 40px; margin-bottom: 10px; }
   .err {
     background: var(--against-dim); border: 1px solid var(--against); color: var(--against);
     border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px;
@@ -145,17 +175,31 @@
     <div class="chips" id="chips"></div>
   </header>
 
-  <div class="controls">
-    <input id="search" type="search" placeholder="Search player or league" autocomplete="off">
-    <select id="filter">
-      <option value="all">All</option>
-      <option value="starters">Starters only</option>
+  <input id="search" type="search" placeholder="Search player, team or league" autocomplete="off">
+
+  <div class="filters">
+    <div class="field"><label for="f-week">Week</label><select id="f-week"></select></div>
+    <div class="field"><label for="f-day">Day</label><select id="f-day"></select></div>
+    <div class="field"><label for="f-league">League</label><select id="f-league"></select></div>
+    <div class="field"><label for="f-side">For / Against</label><select id="f-side">
+      <option value="all">All players</option>
       <option value="for">For me</option>
       <option value="against">Against me</option>
-      <option value="both">Conflicts</option>
-      <option value="injured">Injured</option>
-    </select>
+      <option value="both">Conflict</option>
+    </select></div>
+    <div class="field"><label for="f-slot">Roster spot</label><select id="f-slot">
+      <option value="all">Starters &amp; bench</option>
+      <option value="starters">Starters only</option>
+      <option value="bench">Bench only</option>
+    </select></div>
+    <div class="field"><label for="f-injury">Injury</label><select id="f-injury">
+      <option value="all">Any status</option>
+      <option value="injured">Injured (any)</option>
+      <option value="out">Out or doubtful</option>
+      <option value="healthy">Healthy only</option>
+    </select></div>
   </div>
+  <button class="reset" id="reset" type="button">Reset filters</button>
 
   <div id="changes"></div>
   <div id="errors"></div>
@@ -165,19 +209,84 @@
 
 <script>
 const BAD_INJURIES = ["Out", "IR", "Doubtful", "Suspended"];
-let REPORT = null;
+const VERDICT_LABEL = { for: "FOR ME", against: "AGAINST", both: "CONFLICT" };
+
+let BUNDLE = null;
 
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const VERDICT_LABEL = { for: "FOR ME", against: "AGAINST", both: "CONFLICT" };
+const el = id => document.getElementById(id);
+const controls = ["f-week", "f-day", "f-league", "f-side", "f-slot", "f-injury"];
 
-function entryHtml(e, isOpponent) {
-  const bench = !e.starting ? " bench" : "";
-  const vs = isOpponent && e.opponent
-    ? ` <span class="vs">· ${esc(e.opponent)}</span>` : "";
-  return `<div class="entry${bench}"><span class="lg">${esc(e.league)}</span>` +
-         `<span class="slot">${esc(e.slot)}</span>${vs}</div>`;
+function weekReport() {
+  return (BUNDLE.weeks || {})[el("f-week").value] || { days: [] };
+}
+
+/* ---- filtering -------------------------------------------------------- */
+
+function entryMatches(entry) {
+  const league = el("f-league").value;
+  const slot = el("f-slot").value;
+  if (league !== "all" && entry.league !== league) return false;
+  if (slot === "starters" && !entry.starting) return false;
+  if (slot === "bench" && entry.starting) return false;
+  return true;
+}
+
+function injuryMatches(player) {
+  const mode = el("f-injury").value;
+  const status = player.injury_status || "";
+  if (mode === "injured") return status !== "";
+  if (mode === "out") return BAD_INJURIES.indexOf(status) !== -1;
+  if (mode === "healthy") return status === "";
+  return true;
+}
+
+function searchMatches(player) {
+  const term = el("search").value.trim().toLowerCase();
+  if (!term) return true;
+  const hay = [player.name, player.team, player.position]
+    .concat(player.for_me.map(e => e.league))
+    .concat(player.against_me.map(e => e.league))
+    .concat(player.against_me.map(e => e.opponent))
+    .join(" ").toLowerCase();
+  return hay.indexOf(term) !== -1;
+}
+
+/* Narrow a player to the entries that survive the league and slot filters,
+   then re-derive their colour from what is left. Filtering to one league
+   should recolour a player by that league alone. */
+function applyFilters(player) {
+  const forMe = player.for_me.filter(entryMatches);
+  const against = player.against_me.filter(entryMatches);
+  if (!forMe.length && !against.length) return null;
+
+  const verdict = forMe.length && against.length ? "both"
+                : forMe.length ? "for" : "against";
+
+  if (el("f-side").value !== "all" && el("f-side").value !== verdict) return null;
+  if (!injuryMatches(player) || !searchMatches(player)) return null;
+
+  return Object.assign({}, player, {
+    for_me: forMe, against_me: against, verdict: verdict,
+  });
+}
+
+function visibleDays() {
+  const days = weekReport().days || [];
+  const chosen = el("f-day").value;
+  return chosen === "all" ? days : days.filter(d => d.date === chosen);
+}
+
+/* ---- rendering -------------------------------------------------------- */
+
+function entryHtml(entry, isOpponent) {
+  const bench = entry.starting ? "" : " bench";
+  const vs = isOpponent && entry.opponent
+    ? ` <span class="vs">· ${esc(entry.opponent)}</span>` : "";
+  return `<div class="entry${bench}"><span class="lg">${esc(entry.league)}</span>` +
+         `<span class="slot">${esc(entry.slot)}</span>${vs}</div>`;
 }
 
 function cardHtml(p) {
@@ -187,13 +296,10 @@ function cardHtml(p) {
       `${p.injury_body_part ? " · " + esc(p.injury_body_part) : ""}</span>`
     : "";
 
-  const forCol = p.for_me.length
-    ? `<div class="col for"><h4>For me</h4>${p.for_me.map(e => entryHtml(e, false)).join("")}</div>`
-    : `<div class="col for empty"><h4>For me</h4><div class="entry">—</div></div>`;
-
-  const againstCol = p.against_me.length
-    ? `<div class="col against"><h4>Against me</h4>${p.against_me.map(e => entryHtml(e, true)).join("")}</div>`
-    : `<div class="col against empty"><h4>Against me</h4><div class="entry">—</div></div>`;
+  const col = (entries, kind, heading, isOpponent) => entries.length
+    ? `<div class="col ${kind}"><h4>${heading}</h4>` +
+      entries.map(e => entryHtml(e, isOpponent)).join("") + `</div>`
+    : `<div class="col ${kind} empty"><h4>${heading}</h4><div class="entry">—</div></div>`;
 
   return `<article class="card ${p.verdict}">
     <div class="top">
@@ -205,95 +311,148 @@ function cardHtml(p) {
       <span class="kick">${esc(p.kickoff_label)} · ${esc(p.matchup)}</span>
       ${inj}
     </div>
-    <div class="cols">${forCol}${againstCol}</div>
+    <div class="cols">
+      ${col(p.for_me, "for", "For me", false)}
+      ${col(p.against_me, "against", "Against me", true)}
+    </div>
   </article>`;
 }
 
 function render() {
-  if (!REPORT) return;
-  const term = document.getElementById("search").value.trim().toLowerCase();
-  const mode = document.getElementById("filter").value;
+  if (!BUNDLE) return;
 
-  let players = REPORT.players.filter(p => {
-    if (mode === "starters" && !p.starting_anywhere) return false;
-    if (mode === "for" && p.verdict !== "for") return false;
-    if (mode === "against" && p.verdict !== "against") return false;
-    if (mode === "both" && p.verdict !== "both") return false;
-    if (mode === "injured" && !p.injury_status) return false;
-    if (!term) return true;
-    const hay = [p.name, p.team, p.position]
-      .concat(p.for_me.map(e => e.league))
-      .concat(p.against_me.map(e => e.league))
-      .join(" ").toLowerCase();
-    return hay.indexOf(term) !== -1;
-  });
+  const days = visibleDays();
+  const showDayHeads = days.length > 1;
 
-  const list = document.getElementById("list");
-  if (!players.length) {
-    list.innerHTML = `<div class="empty-state"><div class="big">🏈</div>
-      <div>${REPORT.players.length ? "No players match this filter." : "No rostered players are in today's games."}</div></div>`;
-    return;
-  }
+  let html = "";
+  let shown = 0;
+  const totals = { for: 0, against: 0, both: 0 };
 
-  // Group by kickoff so the day reads in the order it will actually happen.
-  let html = "", lastKick = null;
-  players.forEach(p => {
-    if (p.kickoff_label !== lastKick) {
-      html += `<div class="group-head">${esc(p.kickoff_label)}</div>`;
-      lastKick = p.kickoff_label;
+  days.forEach(day => {
+    const players = day.players.map(applyFilters).filter(Boolean);
+    if (!players.length) return;
+
+    if (showDayHeads) {
+      html += `<div class="day-head">${esc(day.date_label)} · ${players.length}</div>`;
     }
-    html += cardHtml(p);
+    let lastKick = null;
+    players.forEach(p => {
+      if (p.kickoff_label !== lastKick) {
+        html += `<div class="group-head">${esc(p.kickoff_label)}</div>`;
+        lastKick = p.kickoff_label;
+      }
+      html += cardHtml(p);
+      totals[p.verdict]++;
+      shown++;
+    });
   });
-  list.innerHTML = html;
+
+  el("chips").innerHTML =
+    `<span class="chip for">${totals.for} for me</span>` +
+    `<span class="chip against">${totals.against} against me</span>` +
+    `<span class="chip both">${totals.both} conflict</span>` +
+    `<span class="chip">${shown} shown</span>`;
+
+  controls.forEach(id => {
+    const select = el(id);
+    const isDefault = select.value === "all" ||
+      (id === "f-week" && select.value === String(BUNDLE.current.week)) ||
+      (id === "f-day" && select.value === BUNDLE.current.date);
+    select.classList.toggle("active", !isDefault);
+  });
+
+  const gameCount = days.reduce((n, d) => n + d.games.length, 0);
+  el("subtitle").textContent =
+    `Week ${el("f-week").value} · ${days.length} day${days.length === 1 ? "" : "s"}` +
+    ` · ${gameCount} game${gameCount === 1 ? "" : "s"}`;
+
+  el("list").innerHTML = shown ? html
+    : `<div class="empty-state"><div class="big">🏈</div>
+       <div>No players match these filters.</div></div>`;
 }
 
-function paint(report) {
-  REPORT = report;
-  document.getElementById("title").textContent = report.date_label;
-  const games = report.games.length;
-  document.getElementById("subtitle").textContent =
-    `Week ${report.week} · ${games} game${games === 1 ? "" : "s"} · ${report.leagues.length} leagues`;
+/* ---- dropdown population ---------------------------------------------- */
 
-  const c = report.counts;
-  document.getElementById("chips").innerHTML =
-    `<span class="chip for">${c.for} for me</span>` +
-    `<span class="chip against">${c.against} against me</span>` +
-    `<span class="chip both">${c.both} conflict</span>` +
-    `<span class="chip">${c.total} total</span>`;
+function fillWeeks() {
+  const weeks = Object.keys(BUNDLE.weeks || {}).sort((a, b) => a - b);
+  el("f-week").innerHTML = weeks
+    .map(w => `<option value="${esc(w)}">Week ${esc(w)}</option>`).join("");
+  const current = String(BUNDLE.current.week);
+  el("f-week").value = weeks.indexOf(current) !== -1 ? current : weeks[weeks.length - 1];
+}
 
-  const changes = report.changes || [];
-  document.getElementById("changes").innerHTML = changes.length
-    ? `<div class="changes"><h3>Lineup changes since the last check</h3>` +
-      changes.map((c, i) =>
-        `<div class="${c.side === "mine" ? "mine" : ""}">` +
-        `${esc((report.change_lines || [])[i] || "")}</div>`).join("") +
-      `</div>`
-    : "";
+function fillDays(preferDate) {
+  const days = weekReport().days || [];
+  el("f-day").innerHTML =
+    `<option value="all">All days</option>` +
+    days.map(d => `<option value="${esc(d.date)}">${esc(d.short_label)}</option>`).join("");
 
-  document.getElementById("errors").innerHTML = (report.errors || [])
-    .map(e => `<div class="err">${esc(e)}</div>`).join("");
+  // Default to today when the chosen week contains it, otherwise the first day.
+  const wanted = days.some(d => d.date === preferDate) ? preferDate
+               : (days[0] ? days[0].date : "all");
+  el("f-day").value = wanted;
+}
 
-  document.getElementById("footer").textContent = `Updated ${report.generated_label}`;
+function fillLeagues() {
+  el("f-league").innerHTML =
+    `<option value="all">All leagues</option>` +
+    (BUNDLE.leagues || []).map(l =>
+      `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join("");
+}
+
+function resetFilters() {
+  fillWeeks();
+  fillDays(BUNDLE.current.date);
+  ["f-league", "f-side", "f-slot", "f-injury"].forEach(id => { el(id).value = "all"; });
+  el("search").value = "";
   render();
 }
 
-document.getElementById("search").addEventListener("input", render);
-document.getElementById("filter").addEventListener("change", render);
+/* ---- boot -------------------------------------------------------------- */
 
-// A standalone build (see build_static.py) embeds the report directly, so the
-// same page works as a served app or as a single file you can email or save.
+function paint(bundle) {
+  BUNDLE = bundle;
+  el("title").textContent = "Game Day";
+
+  fillWeeks();
+  fillDays(bundle.current.date);
+  fillLeagues();
+
+  const changes = bundle.changes || [];
+  el("changes").innerHTML = changes.length
+    ? `<div class="changes"><h3>Lineup changes since the last check</h3>` +
+      changes.map((c, i) => `<div class="${c.side === "mine" ? "mine" : ""}">` +
+        `${esc((bundle.change_lines || [])[i] || "")}</div>`).join("") + `</div>`
+    : "";
+
+  el("errors").innerHTML = (bundle.errors || [])
+    .map(e => `<div class="err">${esc(e)}</div>`).join("");
+
+  el("footer").textContent = `Updated ${bundle.generated_label}`;
+  render();
+}
+
+el("f-week").addEventListener("change", () => {
+  fillDays(BUNDLE.current.date);
+  render();
+});
+["f-day", "f-league", "f-side", "f-slot", "f-injury"].forEach(id =>
+  el(id).addEventListener("change", render));
+el("search").addEventListener("input", render);
+el("reset").addEventListener("click", resetFilters);
+
 if (window.__REPORT__) {
   paint(window.__REPORT__);
 } else {
   fetch("api/report.json?t=" + Date.now())
-  .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-  .then(paint)
-  .catch(err => {
-    document.getElementById("title").textContent = "No report yet";
-    document.getElementById("list").innerHTML =
-      `<div class="empty-state"><div class="big">⚠️</div>
-       <div>Could not load the report.<br><small>${esc(err.message)}</small></div></div>`;
-  });
+    .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(paint)
+    .catch(err => {
+      el("title").textContent = "No report yet";
+      el("list").innerHTML =
+        `<div class="empty-state"><div class="big">⚠️</div>
+         <div>Could not load the report.<br><small>${esc(err.message)}</small></div></div>`;
+    });
 }
 </script>
 </body>

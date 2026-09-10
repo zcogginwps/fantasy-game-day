@@ -50,9 +50,24 @@ def _eligible_players(players, playing_teams):
 
 
 def build_leagues(target_date, tz):
-    """Four plausible leagues, each with a roster and an opponent roster."""
+    """Four plausible leagues built from players in that day's games."""
+    return _build(schedule_module.games_on(target_date, tz))
+
+
+def build_leagues_for_week(season, week, tz):
+    """Same, but drawing on every team playing anywhere in the week.
+
+    Seeding from a single day would leave the week's other days empty, since a
+    roster built from Thursday's two teams has nobody playing on Sunday.
+    """
+    games = []
+    for _, day_games in schedule_module.games_in_week(season, week, tz):
+        games.extend(day_games)
+    return _build(games)
+
+
+def _build(games):
     players = sleeper_client.get_players()
-    games = schedule_module.games_on(target_date, tz)
     playing = set()
     for game in games:
         playing.add(game.home)

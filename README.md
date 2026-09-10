@@ -62,11 +62,40 @@ To see the interface with invented leagues built from real NFL players:
 | `python3 collect.py` | Build today's report |
 | `python3 collect.py --date 2026-09-13` | Build a specific day |
 | `python3 collect.py --print` | Also print a text summary |
-| `python3 collect.py --demo` | Fake leagues, no credentials needed |
+| `python3 collect.py --demo` | Fake leagues, written to a separate file |
+| `python3 collect.py --weeks 1-4` | Also collect weeks 1 through 4 |
+| `python3 collect.py --weeks all` | Collect the whole season |
 | `python3 collect.py --watch` | Keep checking for lineup changes until the last kickoff |
 | `python3 collect.py --notify` | Also post a Mac notification |
 | `python3 serve.py` | Serve the app on your local network |
 | `python3 build_static.py` | Bundle the report into one HTML file |
+
+## Filters
+
+Six dropdowns, all independent — set as many at once as you like:
+
+| Filter | Options |
+| --- | --- |
+| Week | Every week collected so far |
+| Day | Each game day in that week, or all of them |
+| League | All leagues, or one |
+| For / Against | All, for me, against me, or conflict |
+| Roster spot | Starters and bench, starters only, or bench only |
+| Injury | Any status, injured, out or doubtful, or healthy only |
+
+The default view is the current week and today. **Reset filters** returns to it.
+
+Narrowing to a single league recolours players by that league alone, so a
+player who is green in one league and red in another shows their real role in
+whichever league you picked. That also means conflicts only ever appear when
+the league filter is set to "All leagues" — being for *and* against yourself
+requires two leagues.
+
+The week dropdown only lists weeks you have collected. To fill it in:
+
+    python3 collect.py --weeks 1-4
+
+Each week is about 45KB and takes roughly two seconds.
 
 ## Bench players
 
@@ -92,6 +121,9 @@ before each kickoff. It stops on its own once the day's last game has started.
 
 Every run records what each lineup looked like, so even a plain
 `python3 collect.py` reports what changed since the previous run.
+
+Demo runs never touch this — they write to their own file and keep their own
+state, so `--demo` cannot disturb real data.
 
 Note that a benching is reported as well as a start — an opponent pulling a
 starter matters just as much as adding one.
