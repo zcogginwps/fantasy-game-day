@@ -115,11 +115,31 @@ def build_html(day, week, change_lines=None, app_url=None):
             'Lineup changes</div>%s</td></tr></table>' % items)
 
     body = []
-    last_verdict = None
+    multiple_waves = len(set(p.get("wave", 0) for p in day["players"])) > 1
+    last_wave, last_verdict = None, None
     for player in day["players"]:
+        if multiple_waves and player.get("wave") != last_wave:
+            in_wave = [p for p in day["players"]
+                       if p.get("wave") == player.get("wave")]
+            times = []
+            for p in in_wave:
+                if p["kickoff_label"] not in times:
+                    times.append(p["kickoff_label"])
+            body.append(
+                '<div style="margin:20px 0 4px;padding:7px 10px;border-radius:6px;'
+                'background:#eef1f5;border:1px solid #e0e4ea;font-size:13px;'
+                'font-weight:700;color:#12151b;">%s '
+                '<span style="color:#5f6877;font-weight:600;">&middot; %s &middot; %d</span>'
+                '</div>' % (_esc(player.get("wave_name", "")),
+                            _esc(" &amp; ".join(times)), len(in_wave)))
+            last_wave = player.get("wave")
+            last_verdict = None
         if player["verdict"] != last_verdict:
             colour = COLORS.get(player["verdict"], ("#5f6877", ""))[0]
-            count = len([p for p in day["players"]
+            scope = ([p for p in day["players"]
+                      if p.get("wave") == player.get("wave")]
+                     if multiple_waves else day["players"])
+            count = len([p for p in scope
                          if p["verdict"] == player["verdict"]])
             body.append(
                 '<div style="font-size:11px;font-weight:800;letter-spacing:.07em;'

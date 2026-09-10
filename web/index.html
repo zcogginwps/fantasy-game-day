@@ -101,6 +101,12 @@
   .group-head.for { color: var(--for); }
   .group-head.both { color: var(--both); }
   .group-head.against { color: var(--against); }
+  .wave-head {
+    font-size: 13.5px; font-weight: 750; letter-spacing: -.01em; color: var(--text);
+    margin: 20px 4px 2px; padding: 7px 10px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid var(--line);
+  }
+  .wave-head span { color: var(--muted); font-weight: 600; }
   .day-head {
     font-size: 14px; font-weight: 750; letter-spacing: -.01em; color: var(--text);
     margin: 22px 4px 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
@@ -383,9 +389,11 @@ function render() {
     const players = day.players.map(applyFilters).filter(Boolean);
     if (!players.length) return;
 
-    // Players on your side always come first and opponents always last, so the
-    // order never depends on when the games happen to start.
+    // Split by kickoff wave first - a Sunday is three separate slates and one
+    // list of 77 is unreadable - then within each wave your players come first
+    // and opponents last.
     players.sort((a, b) =>
+      a.wave - b.wave ||
       VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] ||
       a.kickoff_utc.localeCompare(b.kickoff_utc) ||
       (a.starting_anywhere === b.starting_anywhere ? 0 : a.starting_anywhere ? -1 : 1) ||
@@ -394,10 +402,25 @@ function render() {
     if (showDayHeads) {
       html += `<div class="day-head">${esc(day.date_label)} · ${players.length}</div>`;
     }
-    let lastVerdict = null;
+
+    // A day with a single kickoff needs no wave heading; each card shows its
+    // own time already.
+    const multipleWaves = new Set(players.map(p => p.wave)).size > 1;
+
+    let lastWave = null, lastVerdict = null;
     players.forEach(p => {
+      if (multipleWaves && p.wave !== lastWave) {
+        const inWave = players.filter(x => x.wave === p.wave);
+        const times = [...new Set(inWave.map(x => x.kickoff_label))].join(" & ");
+        html += `<div class="wave-head">${esc(p.wave_name)} ` +
+                `<span>· ${esc(times)} · ${inWave.length}</span></div>`;
+        lastWave = p.wave;
+        lastVerdict = null;  // Verdict headings restart inside each wave.
+      }
       if (p.verdict !== lastVerdict) {
-        const count = players.filter(x => x.verdict === p.verdict).length;
+        const scope = multipleWaves
+          ? players.filter(x => x.wave === p.wave) : players;
+        const count = scope.filter(x => x.verdict === p.verdict).length;
         html += `<div class="group-head ${p.verdict}">` +
                 `${GROUP_LABEL[p.verdict]} · ${count}</div>`;
         lastVerdict = p.verdict;

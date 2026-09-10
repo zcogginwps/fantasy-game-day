@@ -25,6 +25,23 @@ POSITION_ORDER = {"QB": 0, "RB": 1, "WR": 2, "TE": 3, "FLEX": 4, "K": 5, "DEF": 
 # and the email follows the same order.
 VERDICT_ORDER = {"for": 0, "both": 1, "against": 2}
 
+
+def kickoff_wave(local_kickoff):
+    """Which slate of the day a game belongs to.
+
+    Sunday runs in three waves and one long list of 77 players is unreadable.
+    Bucketing by local hour rather than by exact time keeps this working for
+    international morning games and for the odd 3:05 or 4:05 start.
+    """
+    hour = local_kickoff.hour + local_kickoff.minute / 60.0
+    if hour < 11.0:
+        return 0, "Morning"
+    if hour < 14.5:
+        return 1, "Early"
+    if hour < 18.0:
+        return 2, "Afternoon"
+    return 3, "Night"
+
 SEVERITY = {
     "Out": 4, "IR": 4, "Suspended": 4, "Doubtful": 3,
     "Questionable": 2, "Day-to-Day": 2, "Probable": 1, "": 0,
@@ -274,6 +291,7 @@ class Assembler(object):
 
             game_dict = game.to_dict(tz)
             opponent_team = game.opponent_of(team)
+            wave_order, wave_name = kickoff_wave(game.kickoff_utc.astimezone(tz))
             players.append({
                 "name": row.record["name"],
                 "position": row.record.get("position") or "",
@@ -288,6 +306,8 @@ class Assembler(object):
                 "game_state": game_dict["state"],
                 "matchup": "%s %s" % (
                     "vs" if game.is_home(team) else "@", opponent_team),
+                "wave": wave_order,
+                "wave_name": wave_name,
                 "for_me": sorted(row.for_me, key=lambda e: e["league"]),
                 "against_me": sorted(row.against_me, key=lambda e: e["league"]),
                 "starting_anywhere": any(
@@ -295,6 +315,7 @@ class Assembler(object):
             })
 
         players.sort(key=lambda p: (
+            p["wave"],
             VERDICT_ORDER.get(p["verdict"], 9),
             p["kickoff_utc"],
             0 if p["starting_anywhere"] else 1,
