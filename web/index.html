@@ -315,7 +315,14 @@
     flex: none;
   }
   .board-grip:active { cursor: grabbing; }
-  .board-card.dragging, .board-row.dragging { opacity: .55; }
+  .board-card.dragging, .board-row.dragging {
+    position: relative; z-index: 50; cursor: grabbing;
+    box-shadow: 0 10px 26px rgba(0,0,0,.45); transform: scale(1.02);
+  }
+  .board-grip:active { cursor: grabbing; }
+  /* While a drag is happening, the other matchups glide to make room. */
+  .reordering [data-league] { transition: transform .16s ease; }
+  .reordering .dragging { transition: none; }  /* the held card tracks the finger 1:1 */
   .board-card .board-top { align-items: center; }
   .board-row .brow-league {
     flex: 1; min-width: 0; font-weight: 650; font-size: 14px;
@@ -908,37 +915,69 @@ function persistBoardOrder(names) {
 /* Pointer-based reorder: works with a finger or a mouse. The handle sets
    touch-action:none so dragging it moves the card instead of scrolling. */
 function enableBoardReorder(container) {
-  let dragging = null;
   container.querySelectorAll("[data-league]").forEach(card => {
     const grip = card.querySelector(".board-grip");
-    if (!grip) return;
-    grip.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      dragging = card;
-      card.classList.add("dragging");
-
-      const onMove = (ev) => {
-        const others = [...container.querySelectorAll("[data-league]")]
-          .filter(c => c !== dragging);
-        let before = null;
-        for (const other of others) {
-          const box = other.getBoundingClientRect();
-          if (ev.clientY < box.top + box.height / 2) { before = other; break; }
-        }
-        container.insertBefore(dragging, before);  // null => append at end
-      };
-      const onUp = () => {
-        card.classList.remove("dragging");
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-        persistBoardOrder([...container.querySelectorAll("[data-league]")]
-          .map(c => c.dataset.league));
-        dragging = null;
-      };
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp);
-    });
+    if (grip) grip.addEventListener("pointerdown", (e) => startBoardDrag(e, card, container));
   });
+}
+
+/* The held card lifts and follows the finger; the rest slide to open a gap
+   where it will land. The DOM is only reordered once, on release, so the
+   motion during the drag is smooth rather than jumping row by row. */
+function startBoardDrag(event, card, container) {
+  event.preventDefault();
+  const items = [...container.querySelectorAll("[data-league]")];
+  const startIndex = items.indexOf(card);
+  const rects = items.map(el => el.getBoundingClientRect());
+  const startY = event.clientY;
+  // Row-to-row distance, so the gap that opens matches the card's real height.
+  const step = rects.length > 1
+    ? Math.abs(rects[1].top - rects[0].top)
+    : rects[0].height + 8;
+  let targetIndex = startIndex;
+
+  card.classList.add("dragging");
+  container.classList.add("reordering");
+
+  const onMove = (ev) => {
+    card.style.transform = "translateY(" + (ev.clientY - startY) + "px) scale(1.02)";
+
+    // Where would it drop? Count the other cards whose middle is above the finger.
+    let idx = 0;
+    for (let i = 0; i < items.length; i++) {
+      if (i === startIndex) continue;
+      if (ev.clientY > rects[i].top + rects[i].height / 2) idx++;
+    }
+    targetIndex = idx;
+
+    // Slide the others up or down to reveal the gap.
+    items.forEach((el, i) => {
+      if (i === startIndex) return;
+      let shift = 0;
+      if (startIndex < targetIndex && i > startIndex && i <= targetIndex) shift = -step;
+      else if (startIndex > targetIndex && i >= targetIndex && i < startIndex) shift = step;
+      el.style.transform = shift ? "translateY(" + shift + "px)" : "";
+    });
+  };
+
+  const onUp = () => {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    items.forEach(el => { el.style.transform = ""; });
+    card.classList.remove("dragging");
+    container.classList.remove("reordering");
+
+    if (targetIndex !== startIndex) {
+      const order = items.map(el => el.dataset.league);
+      order.splice(startIndex, 1);
+      order.splice(targetIndex, 0, card.dataset.league);
+      persistBoardOrder(order);
+      render();  // repaint in the new, saved order
+    }
+  };
+
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
 }
 
 function renderScoreboard() {
