@@ -163,7 +163,7 @@
 
   .filters {
     display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
-    margin: 12px 0 6px;
+    margin: 8px 0 6px;
   }
   @media (min-width: 620px) { .filters { grid-template-columns: repeat(3, 1fr); } }
   .field { min-width: 0; }
@@ -224,10 +224,73 @@
   .card.against { border-left-color: var(--against); background: linear-gradient(90deg, var(--against-dim), transparent 55%), var(--surface); }
   .card.both { border-left-color: var(--both); background: linear-gradient(90deg, var(--both-dim), transparent 55%), var(--surface); }
 
-  /* Standard / condensed switch for the Players tab. */
+  /* Standard / condensed switch. Full width under the filters on Players;
+     compact beside the week dropdown on Scoreboard. */
   .view-toggle {
     display: flex; gap: 4px; margin: 0 0 10px; padding: 3px; width: max-content;
     background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px;
+  }
+  .view-toggle.wide { width: auto; margin: 8px 0 10px; }
+  .view-toggle.wide button { flex: 1; padding: 7px 12px; font-size: 13.5px; }
+  .view-toggle.small { margin: 0; align-self: end; }
+
+  /* Filters live behind a disclosure so the list starts near the top. The
+     panel animates open with a 0fr -> 1fr grid row, which needs no fixed
+     height and stays smooth however many fields are inside. */
+  .filters-toggle {
+    display: flex; align-items: center; gap: 7px; margin: 10px 0 0;
+    padding: 7px 11px; font: inherit; font-size: 13px; font-weight: 650;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; cursor: pointer;
+  }
+  .filters-toggle .chev {
+    display: inline-block; font-size: 11px; color: var(--muted);
+    transition: transform .2s ease;
+  }
+  .filters-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  .filters-toggle .fcount {
+    font-size: 11px; font-weight: 800; color: var(--bg);
+    background: var(--text); border-radius: 10px; padding: 1px 7px;
+  }
+  .filters-panel {
+    display: grid; grid-template-rows: 0fr;
+    transition: grid-template-rows .25s ease;
+  }
+  .filters-panel.open { grid-template-rows: 1fr; }
+  .filters-inner { overflow: hidden; min-height: 0; }
+  .filters-inner #search { margin-top: 8px; }
+
+  /* Scoreboard header row: week picker with the view switch to its right. */
+  .board-bar {
+    display: flex; align-items: end; gap: 10px; margin: 10px 0 12px;
+  }
+  .board-bar .field { flex: 1; max-width: 220px; }
+
+  /* Condensed scoreboard: one line per matchup. */
+  .board-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 4px solid var(--line); border-radius: 8px;
+    padding: 8px 11px; margin-bottom: 5px;
+  }
+  .board-row.ahead { border-left-color: var(--for); }
+  .board-row.behind { border-left-color: var(--against); }
+  .board-row .brow-league {
+    flex: 1; min-width: 0; font-weight: 650; font-size: 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .board-row .brow-scores {
+    font-variant-numeric: tabular-nums; font-weight: 750; font-size: 15px;
+    white-space: nowrap;
+  }
+  .board-row .brow-scores .mine { color: var(--for); }
+  .board-row .brow-scores .dash { color: var(--muted); font-weight: 500; padding: 0 3px; }
+  .board-row .brow-pct {
+    min-width: 42px; text-align: right; font-size: 12px; font-weight: 700;
+    color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .board-row .brow-pct.est::after {
+    content: "~"; color: var(--both); margin-left: 1px;
   }
   .view-toggle button {
     font: inherit; font-size: 12.5px; font-weight: 650; padding: 5px 12px;
@@ -358,13 +421,23 @@
     <button class="tab" id="tab-scoreboard" role="tab" type="button">Scoreboard</button>
   </nav>
 
-  <div class="view-toggle players-only" role="group" aria-label="View">
-    <button type="button" id="view-standard" aria-pressed="true">Standard</button>
-    <button type="button" id="view-condensed" aria-pressed="false">Condensed</button>
+  <!-- Scoreboard: the week picker and its view switch, side by side. -->
+  <div class="board-bar" id="board-bar" hidden>
+    <div class="field"><label for="f-week-board">Week</label><select id="f-week-board"></select></div>
+    <div class="view-toggle small" role="group" aria-label="Scoreboard view">
+      <button type="button" id="bview-standard" aria-pressed="true">Standard</button>
+      <button type="button" id="bview-condensed" aria-pressed="false">Condensed</button>
+    </div>
   </div>
 
-  <input id="search" type="search" placeholder="Search player, team or league" autocomplete="off">
-
+  <!-- Players: filters are tucked away by default; the list is the point. -->
+  <button class="filters-toggle players-only" id="filters-toggle" type="button"
+          aria-expanded="false" aria-controls="filters-panel">
+    <span class="chev">&#9654;</span> Filters <span class="fcount" id="filters-count" hidden></span>
+  </button>
+  <div class="filters-panel players-only" id="filters-panel">
+    <div class="filters-inner">
+      <input id="search" type="search" placeholder="Search player, team or league" autocomplete="off">
   <div class="filters">
     <div class="field"><label for="f-week">Week</label><select id="f-week"></select></div>
     <div class="field players-only"><label for="f-day">Day</label><select id="f-day"></select></div>
@@ -387,7 +460,14 @@
       <option value="healthy">Healthy only</option>
     </select></div>
   </div>
-  <button class="reset" id="reset" type="button">Reset filters</button>
+      <button class="reset" id="reset" type="button">Reset filters</button>
+    </div>
+  </div>
+
+  <div class="view-toggle wide players-only" role="group" aria-label="Players view">
+    <button type="button" id="view-standard" aria-pressed="true">Standard</button>
+    <button type="button" id="view-condensed" aria-pressed="false">Condensed</button>
+  </div>
 
   <div id="changes"></div>
   <div id="errors"></div>
@@ -695,6 +775,39 @@ function boardCardHtml(entry) {
   </article>`;
 }
 
+function boardRowHtml(entry) {
+  const upcoming = entry.week_state === "upcoming";
+  const me = entry.me.points, them = entry.opponent.points;
+  const lean = upcoming || me === null || them === null || me === them ? ""
+    : me > them ? " ahead" : " behind";
+  const pct = upcoming ? "" :
+    `<span class="brow-pct${entry.win_probability_source === "estimated" ? " est" : ""}">` +
+    `${Math.round(entry.win_probability * 100)}%</span>`;
+  const fmt = v => v === null ? "—" : v.toFixed(1);
+  return `<div class="board-row${lean}" data-league="${esc(entry.league)}">
+    <span class="brow-league">${esc(entry.league)}</span>
+    <span class="brow-scores"><span class="mine">${fmt(me)}</span>` +
+    `<span class="dash">–</span>${fmt(them)}</span>
+    ${pct}
+  </div>`;
+}
+
+let boardView = "standard";
+try { boardView = localStorage.getItem("boardview") === "condensed" ? "condensed" : "standard"; }
+catch (err) { /* private mode */ }
+
+function setBoardView(mode) {
+  boardView = mode;
+  try { localStorage.setItem("boardview", mode); } catch (err) { /* private mode */ }
+  el("bview-standard").setAttribute("aria-pressed", String(mode === "standard"));
+  el("bview-condensed").setAttribute("aria-pressed", String(mode === "condensed"));
+  render();
+}
+el("bview-standard").addEventListener("click", () => setBoardView("standard"));
+el("bview-condensed").addEventListener("click", () => setBoardView("condensed"));
+el("bview-standard").setAttribute("aria-pressed", String(boardView === "standard"));
+el("bview-condensed").setAttribute("aria-pressed", String(boardView === "condensed"));
+
 function renderScoreboard() {
   const board = weekReport().scoreboard || [];
   const week = el("f-week").value;
@@ -712,7 +825,8 @@ function renderScoreboard() {
 
   const anyEstimated = board.some(e => e.win_probability_source === "estimated");
   const anyUpcoming = board.some(e => e.week_state === "upcoming");
-  el("board").innerHTML = board.map(boardCardHtml).join("") +
+  const cardOrRow = boardView === "condensed" ? boardRowHtml : boardCardHtml;
+  el("board").innerHTML = board.map(cardOrRow).join("") +
     (anyEstimated
       ? `<p class="board-note">ESPN publishes a win probability, shown as-is.
          Sleeper publishes none, so those are estimated: each starter's remaining
@@ -751,8 +865,7 @@ function setTab(name) {
   const players = name === "players";
   el("list").hidden = !players;
   el("board").hidden = players;
-  el("search").hidden = !players;
-  el("reset").hidden = !players;
+  el("board-bar").hidden = players;
   el("changes").hidden = !players;
   // Only the week filter is meaningful on the scoreboard.
   document.querySelectorAll(".players-only").forEach(node => {
@@ -833,13 +946,19 @@ function render() {
     `<span class="chip both">${totals.both} conflict</span>` +
     `<span class="chip">${shown} shown</span>`;
 
+  // With the filters hidden by default, the button itself has to say when
+  // something is narrowing the list.
+  let activeFilters = el("search").value.trim() ? 1 : 0;
   controls.forEach(id => {
     const select = el(id);
     const isDefault = select.value === "all" ||
       (id === "f-week" && select.value === String(BUNDLE.current.week)) ||
       (id === "f-day" && select.value === BUNDLE.current.date);
     select.classList.toggle("active", !isDefault);
+    if (!isDefault) activeFilters++;
   });
+  el("filters-count").textContent = activeFilters;
+  el("filters-count").hidden = activeFilters === 0;
 
   const gameCount = days.reduce((n, d) => n + d.games.length, 0);
   el("subtitle").textContent =
@@ -859,6 +978,9 @@ function fillWeeks() {
     .map(w => `<option value="${esc(w)}">Week ${esc(w)}</option>`).join("");
   const current = String(BUNDLE.current.week);
   el("f-week").value = weeks.indexOf(current) !== -1 ? current : weeks[weeks.length - 1];
+  // The scoreboard has its own copy of the week picker, kept in step.
+  el("f-week-board").innerHTML = el("f-week").innerHTML;
+  el("f-week-board").value = el("f-week").value;
 }
 
 function fillDays(preferDate) {
@@ -956,8 +1078,24 @@ function paint(bundle) {
 }
 
 el("f-week").addEventListener("change", () => {
+  el("f-week-board").value = el("f-week").value;
   fillDays(BUNDLE.current.date);
   render();
+});
+el("f-week-board").addEventListener("change", () => {
+  el("f-week").value = el("f-week-board").value;
+  fillDays(BUNDLE.current.date);
+  render();
+});
+
+/* ---- filters disclosure ---------------------------------------------- */
+
+el("filters-toggle").addEventListener("click", () => {
+  const button = el("filters-toggle");
+  const open = button.getAttribute("aria-expanded") !== "true";
+  button.setAttribute("aria-expanded", String(open));
+  el("filters-panel").classList.toggle("open", open);
+  if (open) el("search").focus({ preventScroll: true });
 });
 ["f-day", "f-league", "f-side", "f-slot", "f-injury"].forEach(id =>
   el(id).addEventListener("change", render));
