@@ -1003,10 +1003,10 @@ function fillDays(preferDate) {
     `<option value="all">All days</option>` +
     days.map(d => `<option value="${esc(d.date)}">${esc(d.short_label)}</option>`).join("");
 
-  // Default to today when the chosen week contains it, otherwise the first day.
-  const wanted = days.some(d => d.date === preferDate) ? preferDate
-               : (days[0] ? days[0].date : "all");
-  el("f-day").value = wanted;
+  // Default to today when it is a game day in the chosen week. Otherwise show
+  // the whole week - on an off day the useful view is everyone, not whichever
+  // game happens to come first.
+  el("f-day").value = days.some(d => d.date === preferDate) ? preferDate : "all";
 }
 
 function fillLeagues() {
