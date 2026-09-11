@@ -25,6 +25,8 @@
     --against-dim: rgba(255, 95, 109, .13);
     --both: #ffc531;
     --both-dim: rgba(255, 197, 49, .13);
+    --toss: #4c9dff;
+    --toss-dim: rgba(76, 157, 255, .15);
     --warn: #ffb020;
   }
   @media (prefers-color-scheme: light) {
@@ -34,6 +36,7 @@
       --for: #0f9d58; --for-dim: rgba(15,157,88,.11);
       --against: #d92d3c; --against-dim: rgba(217,45,60,.11);
       --both: #b8860b; --both-dim: rgba(212,160,23,.15);
+      --toss: #1f6feb; --toss-dim: rgba(31,111,235,.12);
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -51,6 +54,27 @@
   header { padding: 6px 4px 10px; }
   h1 { font-size: 21px; margin: 0 0 2px; letter-spacing: -.02em; }
   .sub { color: var(--muted); font-size: 13px; }
+
+  /* "Add to home screen" banner, shown until the app is installed. */
+  .install-banner {
+    position: relative; background: var(--surface-2);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 34px 12px 13px; margin-bottom: 12px; font-size: 13.5px;
+  }
+  .install-x {
+    position: absolute; top: 7px; right: 8px; background: none; border: 0;
+    color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer;
+    padding: 2px 4px;
+  }
+  .install-main { margin-bottom: 4px; }
+  .install-how {
+    background: none; border: 0; color: var(--toss); font-size: 13px;
+    font-weight: 650; cursor: pointer; padding: 0; text-decoration: underline;
+  }
+  .install-steps { margin-top: 8px; color: var(--muted); line-height: 1.55; }
+  .install-steps ol { margin: 0; padding-left: 18px; }
+  .install-steps li { margin-bottom: 5px; }
+  .install-steps p { margin: 8px 0 0; }
 
   .tabs {
     display: flex; gap: 4px; margin: 10px 0 12px; padding: 3px;
@@ -277,8 +301,22 @@
     border-left: 4px solid var(--line); border-radius: 8px;
     padding: 8px 11px; margin-bottom: 5px;
   }
-  .board-row.winning, .board-card.winning { border-left-color: var(--for); }
-  .board-row.losing, .board-card.losing { border-left-color: var(--against); }
+  .board-card.winning { border-left-color: var(--for); background: linear-gradient(90deg, var(--for-dim), transparent 55%), var(--surface); }
+  .board-card.losing  { border-left-color: var(--against); background: linear-gradient(90deg, var(--against-dim), transparent 55%), var(--surface); }
+  .board-card.tossup  { border-left-color: var(--toss); background: linear-gradient(90deg, var(--toss-dim), transparent 55%), var(--surface); }
+  .board-row.winning  { border-left-color: var(--for); background: linear-gradient(90deg, var(--for-dim), transparent 45%), var(--surface); }
+  .board-row.losing   { border-left-color: var(--against); background: linear-gradient(90deg, var(--against-dim), transparent 45%), var(--surface); }
+  .board-row.tossup   { border-left-color: var(--toss); background: linear-gradient(90deg, var(--toss-dim), transparent 45%), var(--surface); }
+
+  /* Drag-to-reorder handle on each matchup. */
+  .board-grip {
+    cursor: grab; touch-action: none; color: var(--muted); font-size: 15px;
+    line-height: 1; padding: 2px 4px; margin: -2px 2px -2px -2px; user-select: none;
+    flex: none;
+  }
+  .board-grip:active { cursor: grabbing; }
+  .board-card.dragging, .board-row.dragging { opacity: .55; }
+  .board-card .board-top { align-items: center; }
   .board-row .brow-league {
     flex: 1; min-width: 0; font-weight: 650; font-size: 14px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -414,6 +452,12 @@
 </head>
 <body>
 <div class="wrap">
+  <div class="install-banner" id="install-banner" hidden>
+    <button class="install-x" id="install-dismiss" aria-label="Dismiss" type="button">&times;</button>
+    <div class="install-main">&#128241; <b>Add this to your home screen</b> to get game-day notifications.</div>
+    <button class="install-how" id="install-how" type="button">Show me how</button>
+    <div class="install-steps" id="install-steps" hidden></div>
+  </div>
   <header>
     <h1 id="title">Loading…</h1>
     <div class="sub" id="subtitle"></div>
@@ -764,6 +808,7 @@ function boardCardHtml(entry) {
 
   return `<article class="board-card${outcomeClass(entry)}" data-league="${esc(entry.league)}">
     <div class="board-top">
+      <span class="board-grip" aria-hidden="true">&#x2807;</span>
       <span class="board-league">${esc(entry.league)}</span>
       <span class="board-platform">${esc(entry.platform)}</span>
     </div>
@@ -780,13 +825,28 @@ function boardCardHtml(entry) {
   </article>`;
 }
 
-/* Green when the matchup is projected to be won, red when projected lost.
-   Driven by win probability rather than the live score, so a team that is
-   behind early but expected to come back still reads green. */
+/* Colour a matchup by how it is going:
+     - nothing kicked off yet, or a future week: neutral
+     - live and within 45-55%: blue, a genuine toss-up
+     - live and clearer than that: green/red by win probability, so a team
+       behind early but expected to come back still reads green
+     - final: green/red by the actual result. */
 function outcomeClass(entry) {
-  if (entry.week_state === "upcoming" || entry.win_probability === null ||
-      entry.win_probability === undefined) return "";
-  const p = Number(entry.win_probability);
+  if (entry.week_state === "upcoming") return "";
+  const played = entry.starters_played || 0;
+  if (played === 0 && !entry.in_progress) return "";   // not started
+  const p = entry.win_probability;
+  if (p === null || p === undefined) return "";
+
+  if (entry.in_progress) {
+    if (p >= 0.45 && p <= 0.55) return " tossup";
+    return p > 0.5 ? " winning" : p < 0.5 ? " losing" : " tossup";
+  }
+  // Final: prefer the real score, fall back to probability.
+  const me = entry.me.points, them = entry.opponent.points;
+  if (me != null && them != null && me !== them) {
+    return me > them ? " winning" : " losing";
+  }
   return p > 0.5 ? " winning" : p < 0.5 ? " losing" : "";
 }
 
@@ -799,6 +859,7 @@ function boardRowHtml(entry) {
     `${Math.round(entry.win_probability * 100)}%</span>`;
   const fmt = v => v === null ? "—" : v.toFixed(1);
   return `<div class="board-row${lean}" data-league="${esc(entry.league)}">
+    <span class="board-grip" aria-hidden="true">&#x2807;</span>
     <span class="brow-league">${esc(entry.league)}</span>
     <span class="brow-scores"><span class="mine">${fmt(me)}</span>` +
     `<span class="dash">–</span>${fmt(them)}</span>
@@ -822,8 +883,66 @@ el("bview-condensed").addEventListener("click", () => setBoardView("condensed"))
 el("bview-standard").setAttribute("aria-pressed", String(boardView === "standard"));
 el("bview-condensed").setAttribute("aria-pressed", String(boardView === "condensed"));
 
+let boardOrder = [];
+try { boardOrder = JSON.parse(localStorage.getItem("boardorder") || "[]"); }
+catch (err) { boardOrder = []; }
+
+function orderedBoard(board) {
+  if (!boardOrder.length) return board;
+  const rank = name => {
+    const i = boardOrder.indexOf(name);
+    return i === -1 ? boardOrder.length + 1 : i;  // unknown leagues fall to the end
+  };
+  // Stable: leagues not in the saved order keep their existing sequence.
+  return board.map((e, i) => [e, i])
+    .sort((a, b) => rank(a[0].league) - rank(b[0].league) || a[1] - b[1])
+    .map(pair => pair[0]);
+}
+
+function persistBoardOrder(names) {
+  boardOrder = names;
+  try { localStorage.setItem("boardorder", JSON.stringify(names)); }
+  catch (err) { /* private mode */ }
+}
+
+/* Pointer-based reorder: works with a finger or a mouse. The handle sets
+   touch-action:none so dragging it moves the card instead of scrolling. */
+function enableBoardReorder(container) {
+  let dragging = null;
+  container.querySelectorAll("[data-league]").forEach(card => {
+    const grip = card.querySelector(".board-grip");
+    if (!grip) return;
+    grip.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      dragging = card;
+      card.classList.add("dragging");
+
+      const onMove = (ev) => {
+        const others = [...container.querySelectorAll("[data-league]")]
+          .filter(c => c !== dragging);
+        let before = null;
+        for (const other of others) {
+          const box = other.getBoundingClientRect();
+          if (ev.clientY < box.top + box.height / 2) { before = other; break; }
+        }
+        container.insertBefore(dragging, before);  // null => append at end
+      };
+      const onUp = () => {
+        card.classList.remove("dragging");
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        persistBoardOrder([...container.querySelectorAll("[data-league]")]
+          .map(c => c.dataset.league));
+        dragging = null;
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    });
+  });
+}
+
 function renderScoreboard() {
-  const board = weekReport().scoreboard || [];
+  const board = orderedBoard(weekReport().scoreboard || []);
   const week = el("f-week").value;
 
   el("subtitle").textContent =
@@ -840,7 +959,8 @@ function renderScoreboard() {
   const anyEstimated = board.some(e => e.win_probability_source === "estimated");
   const anyUpcoming = board.some(e => e.week_state === "upcoming");
   const cardOrRow = boardView === "condensed" ? boardRowHtml : boardCardHtml;
-  el("board").innerHTML = board.map(cardOrRow).join("") +
+  el("board").innerHTML = '<div id="board-list">' + board.map(cardOrRow).join("") +
+    '</div>' +
     (anyEstimated
       ? `<p class="board-note">ESPN publishes a win probability, shown as-is.
          Sleeper publishes none, so those are estimated: each starter's remaining
@@ -854,6 +974,8 @@ function renderScoreboard() {
          report scoring for the week in progress, so future weeks show the fixture
          and the lineups rather than numbers that would be this week's in disguise.</p>`
       : "");
+
+  if (board.length > 1) enableBoardReorder(el("board-list"));
 }
 
 el("board").addEventListener("click", event => {
@@ -1250,6 +1372,56 @@ if (window.__REPORT__) {
          <div>Could not load the report.<br><small>${esc(err.message)}</small></div></div>`;
     });
 }
+
+/* ---- add-to-home-screen banner ---------------------------------------- */
+(function () {
+  const banner = document.getElementById("install-banner");
+  if (!banner) return;
+
+  // Already installed? The app runs in standalone display mode then.
+  const standalone = window.matchMedia("(display-mode: standalone)").matches ||
+                     window.navigator.standalone === true;
+  let dismissed = false;
+  try { dismissed = localStorage.getItem("installbanner") === "off"; }
+  catch (err) { /* private mode */ }
+  if (standalone || dismissed) return;
+
+  const ua = navigator.userAgent;
+  let steps;
+  if (/iP(hone|ad|od)/.test(ua)) {
+    steps = "<ol>" +
+      "<li>In <b>Safari</b>, tap the <b>Share</b> button (the square with an " +
+      "up-arrow) at the bottom of the screen.</li>" +
+      "<li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>" +
+      "<li>Open the app from its new <b>home-screen icon</b> and sign in.</li>" +
+      "<li>Then turn on alerts in <b>Settings &rarr; Notifications</b>.</li>" +
+      "</ol><p>On iPhone, notifications only work from the home-screen app.</p>";
+  } else if (/Android/.test(ua)) {
+    steps = "<ol>" +
+      "<li>Tap the <b>&#8942;</b> menu in Chrome.</li>" +
+      "<li>Tap <b>Install app</b> (or <b>Add to Home screen</b>).</li>" +
+      "<li>Open it from the new icon, then turn on alerts in " +
+      "<b>Settings &rarr; Notifications</b>.</li></ol>";
+  } else {
+    steps = "<ol>" +
+      "<li>Click the <b>install</b> icon in your browser&rsquo;s address bar " +
+      "(or the menu &rarr; <b>Install</b>).</li>" +
+      "<li>Open the installed app, then turn on alerts in " +
+      "<b>Settings &rarr; Notifications</b>.</li></ol>";
+  }
+  document.getElementById("install-steps").innerHTML = steps;
+  banner.hidden = false;
+
+  document.getElementById("install-how").addEventListener("click", () => {
+    const box = document.getElementById("install-steps");
+    box.hidden = !box.hidden;
+  });
+  document.getElementById("install-dismiss").addEventListener("click", () => {
+    banner.hidden = true;
+    try { localStorage.setItem("installbanner", "off"); } catch (err) { /* ignore */ }
+  });
+})();
+
 </script>
 </body>
 </html>
