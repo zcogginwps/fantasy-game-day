@@ -348,9 +348,24 @@ class Assembler(object):
                     e["starting"] for e in row.for_me + row.against_me),
             })
 
+        def live_points(p):
+            """Highest score across leagues, once the game is under way.
+
+            Pre-kickoff scores are all 0.0 and carry no information, so those
+            players keep the fixed kickoff/position order below.
+            """
+            if p["game_state"] == "pre" or not p["scores"]:
+                return None
+            return max(p["scores"])
+
+        # Within each verdict group the biggest scores come first, so the
+        # players making the most impact sit at the top during games. The
+        # email follows this order too, matching the app.
         players.sort(key=lambda p: (
             p["wave"],
             VERDICT_ORDER.get(p["verdict"], 9),
+            0 if live_points(p) is not None else 1,
+            -(live_points(p) or 0.0),
             p["kickoff_utc"],
             0 if p["starting_anywhere"] else 1,
             POSITION_ORDER.get(p["position"], 9),

@@ -224,6 +224,33 @@
   .card.against { border-left-color: var(--against); background: linear-gradient(90deg, var(--against-dim), transparent 55%), var(--surface); }
   .card.both { border-left-color: var(--both); background: linear-gradient(90deg, var(--both-dim), transparent 55%), var(--surface); }
 
+  /* Standard / condensed switch for the Players tab. */
+  .view-toggle {
+    display: flex; gap: 4px; margin: 0 0 10px; padding: 3px; width: max-content;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px;
+  }
+  .view-toggle button {
+    font: inherit; font-size: 12.5px; font-weight: 650; padding: 5px 12px;
+    background: transparent; color: var(--muted); border: 0; border-radius: 7px;
+    cursor: pointer;
+  }
+  .view-toggle button[aria-pressed="true"] { background: var(--surface); color: var(--text); }
+
+  /* Condensed: one line per player, colour kept, score on the right. */
+  .row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 4px solid var(--line); border-radius: 8px;
+    padding: 6px 10px; margin-bottom: 4px; font-size: 14px;
+  }
+  .row.for { border-left-color: var(--for); background: linear-gradient(90deg, var(--for-dim), transparent 45%), var(--surface); }
+  .row.against { border-left-color: var(--against); background: linear-gradient(90deg, var(--against-dim), transparent 45%), var(--surface); }
+  .row.both { border-left-color: var(--both); background: linear-gradient(90deg, var(--both-dim), transparent 45%), var(--surface); }
+  .row .name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .meta { flex: 1; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .row .score { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .row .score.pending { color: var(--muted); font-weight: 500; }
+
   .top { display: flex; align-items: baseline; gap: 8px; }
   .name { font-weight: 650; font-size: 15.5px; letter-spacing: -.01em; }
   .meta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
@@ -330,6 +357,11 @@
     <button class="tab" id="tab-players" role="tab" type="button">Players</button>
     <button class="tab" id="tab-scoreboard" role="tab" type="button">Scoreboard</button>
   </nav>
+
+  <div class="view-toggle players-only" role="group" aria-label="View">
+    <button type="button" id="view-standard" aria-pressed="true">Standard</button>
+    <button type="button" id="view-condensed" aria-pressed="false">Condensed</button>
+  </div>
 
   <input id="search" type="search" placeholder="Search player, team or league" autocomplete="off">
 
@@ -456,11 +488,18 @@ function applyFilters(player) {
   if (el("f-side").value !== "all" && el("f-side").value !== verdict) return null;
   if (!injuryMatches(player) || !searchMatches(player)) return null;
 
+  // Before kickoff every score is 0.0 - not information, so it must not sort.
+  const started = player.game_state && player.game_state !== "pre";
+  const pointValues = forMe.concat(against)
+    .map(e => e.points).filter(v => v !== null && v !== undefined).map(Number);
+  const pointsMax = started && pointValues.length ? Math.max(...pointValues) : null;
+
   return Object.assign({}, player, {
     for_me: forMe, against_me: against, verdict: verdict,
     // Recomputed from the surviving leagues, so filtering to one league shows
     // that league's score rather than every league's.
     score_label: scoreLabel(forMe.concat(against)),
+    points_max: pointsMax,
   });
 }
 
@@ -516,6 +555,39 @@ function cardHtml(p) {
     </div>
   </article>`;
 }
+
+function rowHtml(p) {
+  const started = p.game_state && p.game_state !== "pre";
+  const score = started && p.score_label
+    ? `<span class="score${p.game_state === "in" ? " live" : ""}">${esc(p.score_label)}</span>`
+    : `<span class="score pending">${esc(p.kickoff_label)}</span>`;
+  const injBad = BAD_INJURIES.indexOf(p.injury_status) !== -1;
+  const inj = p.injury_status
+    ? ` · <span class="inj${injBad ? " bad" : ""}">${esc(p.injury_status)}</span>` : "";
+  return `<div class="row ${p.verdict}">
+    <span class="name">${esc(p.name)}</span>
+    <span class="meta">${esc(p.position)} · ${esc(p.team)}${inj}</span>
+    ${score}
+  </div>`;
+}
+
+/* ---- view toggle ------------------------------------------------------ */
+
+let viewMode = "standard";
+try { viewMode = localStorage.getItem("view") === "condensed" ? "condensed" : "standard"; }
+catch (err) { /* private mode */ }
+
+function setView(mode) {
+  viewMode = mode;
+  try { localStorage.setItem("view", mode); } catch (err) { /* private mode */ }
+  el("view-standard").setAttribute("aria-pressed", String(mode === "standard"));
+  el("view-condensed").setAttribute("aria-pressed", String(mode === "condensed"));
+  render();
+}
+el("view-standard").addEventListener("click", () => setView("standard"));
+el("view-condensed").addEventListener("click", () => setView("condensed"));
+el("view-standard").setAttribute("aria-pressed", String(viewMode === "standard"));
+el("view-condensed").setAttribute("aria-pressed", String(viewMode === "condensed"));
 
 /* ---- scoreboard ------------------------------------------------------- */
 
@@ -711,9 +783,14 @@ function render() {
     // Split by kickoff wave first - a Sunday is three separate slates and one
     // list of 77 is unreadable - then within each wave your players come first
     // and opponents last.
+    // Within each colour group, once games are under way, the biggest scores
+    // rise to the top so the players making the most impact are seen first.
+    // Unscored (pre-kickoff) players keep the fixed kickoff/position order.
     players.sort((a, b) =>
       a.wave - b.wave ||
       VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] ||
+      ((b.points_max === null) - (a.points_max === null)) ||
+      ((b.points_max || 0) - (a.points_max || 0)) ||
       a.kickoff_utc.localeCompare(b.kickoff_utc) ||
       (a.starting_anywhere === b.starting_anywhere ? 0 : a.starting_anywhere ? -1 : 1) ||
       a.name.localeCompare(b.name));
@@ -744,7 +821,7 @@ function render() {
                 `${GROUP_LABEL[p.verdict]} · ${count}</div>`;
         lastVerdict = p.verdict;
       }
-      html += cardHtml(p);
+      html += viewMode === "condensed" ? rowHtml(p) : cardHtml(p);
       totals[p.verdict]++;
       shown++;
     });
