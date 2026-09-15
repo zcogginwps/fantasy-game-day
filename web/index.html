@@ -478,6 +478,11 @@
   .entry .lg { flex: 1 1 auto; min-width: 0; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .entry .slot { flex: none; margin-left: 0; }
+
+  @keyframes bigplay { 0%,100% { box-shadow: 0 0 0 0 rgba(52,209,124,0); }
+    50% { box-shadow: 0 0 0 3px var(--for); } }
+  .bigplay { animation: bigplay .4s ease-in-out 5; }
+  #list > [data-key] { will-change: transform; }
 </style>
 </head>
 <body>
@@ -718,7 +723,7 @@ function cardHtml(p, key) {
              : p.verdict === "against" ? `<div class="cols one">${againstCol}</div>`
              : `<div class="cols">${forCol}${againstCol}</div>`;
 
-  return `<article class="card ${p.verdict}"${key ? ` data-key="${esc(key)}"` : ""}>
+  return `<article class="card ${p.verdict}"${key ? ` data-key="${esc(key)}"` : ""} data-score="${p.points_max == null ? 0 : p.points_max}">
     <div class="top">
       <span class="name">${esc(p.name)}</span>
       <span class="meta">${esc(p.position)} · ${esc(p.team)}</span>
@@ -745,7 +750,7 @@ function rowHtml(p, key) {
     (p.for_me.length ? `<span class="plus">${"+".repeat(p.for_me.length)}</span>` : "") +
     (p.against_me.length ? `<span class="minus">${"-".repeat(p.against_me.length)}</span>` : "");
   const open = key === expandedKey;
-  return `<div class="row ${p.verdict}" data-key="${esc(key)}">
+  return `<div class="row ${p.verdict}" data-key="${esc(key)}" data-score="${p.points_max == null ? 0 : p.points_max}">
     <span class="name">${esc(p.name)}</span>
     <span class="meta">${esc(p.position)} · ${esc(p.team)}${inj}</span>
     <span class="ind">${ind}</span>
@@ -1100,6 +1105,44 @@ function setTab(name) {
 el("tab-players").addEventListener("click", () => setTab("players"));
 el("tab-scoreboard").addEventListener("click", () => setTab("scoreboard"));
 
+let lastScores = {};
+
+function readAttr(name) {
+  const m = {};
+  el("list").querySelectorAll(":scope > [data-key]").forEach(e => {
+    m[e.getAttribute("data-key")] = name === "top"
+      ? e.getBoundingClientRect().top
+      : (parseFloat(e.getAttribute("data-score")) || 0);
+  });
+  return m;
+}
+
+function animateRefresh(oldPos, oldScores) {
+  el("list").querySelectorAll(":scope > [data-key]").forEach(elm => {
+    const key = elm.getAttribute("data-key");
+    const oldTop = oldPos[key];
+    if (oldTop !== undefined) {
+      const delta = oldTop - elm.getBoundingClientRect().top;
+      if (Math.abs(delta) > 2) {
+        elm.style.transition = "none";
+        elm.style.transform = "translateY(" + delta + "px)";
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          elm.style.transition = "transform .7s cubic-bezier(.2,.75,.25,1)";
+          elm.style.transform = "";
+        }));
+        setTimeout(() => { elm.style.transition = ""; elm.style.transform = ""; }, 850);
+      }
+    }
+    const newScore = parseFloat(elm.getAttribute("data-score")) || 0;
+    const prev = oldScores[key];
+    if (prev !== undefined && newScore - prev >= 3) {
+      elm.classList.add("bigplay");
+      setTimeout(() => elm.classList.remove("bigplay"), 2200);
+    }
+  });
+  lastScores = readAttr("score");
+}
+
 function render() {
   if (!BUNDLE) return;
   if (activeTab === "scoreboard") { renderScoreboard(); return; }
@@ -1206,6 +1249,7 @@ function render() {
   el("list").innerHTML = shown ? html
     : `<div class="empty-state"><div class="big">🏈</div>
        <div>No players match these filters.</div></div>`;
+  lastScores = readAttr("score");
 }
 
 /* ---- dropdown population ---------------------------------------------- */
@@ -1300,7 +1344,10 @@ async function refresh() {
   });
 
   el("footer").textContent = `Updated ${bundle.generated_label}`;
+  const oldPos = readAttr("top");
+  const oldScores = lastScores;
   render();
+  animateRefresh(oldPos, oldScores);
 }
 
 setInterval(refresh, REFRESH_MS);
