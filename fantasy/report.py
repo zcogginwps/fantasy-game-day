@@ -458,8 +458,10 @@ def build_week(config, season, week, tz, changes_for_date=None,
     """Every game day in one fantasy week, sharing a single league fetch."""
     errors = []
     leagues, sleeper_players = _load(config, season, week, tz, errors)
-    week_stats = ({} if current_week is not None and int(week) != int(current_week)
-                  else sleeper_client.get_week_stats(season, week))
+    # Sleeper's per-week endpoint serves final box scores for completed weeks
+    # just as it does live numbers for the current one, so we fetch every week
+    # and past games keep their stat lines when you navigate back.
+    week_stats = sleeper_client.get_week_stats(season, week)
     assembler = Assembler(leagues, sleeper_players, config, week_stats)
 
     days = []
