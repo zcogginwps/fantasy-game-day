@@ -286,6 +286,9 @@
   }
   .filters-panel.open { grid-template-rows: 1fr; }
   .filters-inner { overflow: hidden; min-height: 0; }
+  /* The panel clips its content for the open/close animation; while the league
+     menu is open, let it overflow so the whole list (and its own scroll) shows. */
+  .filters-panel.menu-open, .filters-panel.menu-open .filters-inner { overflow: visible; }
   .filters-inner #search { margin-top: 8px; }
 
   /* Scoreboard header row: week picker with the view switch to its right. */
@@ -1462,6 +1465,7 @@ el("f-league-btn").addEventListener("click", () => {
   const menu = el("f-league-menu");
   menu.hidden = !menu.hidden;
   el("f-league-btn").setAttribute("aria-expanded", String(!menu.hidden));
+  el("filters-panel").classList.toggle("menu-open", !menu.hidden);
 });
 el("f-league-menu").addEventListener("change", (e) => {
   const cb = e.target.closest("input[type=checkbox]");
@@ -1491,6 +1495,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".league-select") && !el("f-league-menu").hidden) {
     el("f-league-menu").hidden = true;
     el("f-league-btn").setAttribute("aria-expanded", "false");
+    el("filters-panel").classList.remove("menu-open");
   }
 });
 
