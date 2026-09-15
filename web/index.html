@@ -457,11 +457,34 @@
   .notif ol { margin: 9px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
 
   /* ===== Player updates (features 1-6) ===== */
-  .league-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
-  .lchip { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px;
-    border-radius: 20px; background: var(--surface); color: var(--muted);
-    border: 1px solid var(--line); cursor: pointer; }
-  .lchip.on { background: var(--surface-2); color: var(--text); border-color: var(--text); }
+  .league-select { position: relative; }
+  .league-trigger {
+    width: 100%; font: inherit; font-size: 14px; padding: 8px 26px 8px 10px;
+    text-align: left; background: var(--surface); color: var(--text);
+    border: 1px solid var(--line); border-radius: 9px; cursor: pointer;
+    -webkit-appearance: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+    background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+  }
+  .league-trigger.active { border-color: var(--text); }
+  .league-menu {
+    position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 10px 26px rgba(0,0,0,.45); padding: 4px; max-height: 262px; overflow-y: auto;
+  }
+  /* Scoped to .league-menu so these labels beat the .field label styling
+     (uppercase, tiny) that the filter panel applies to every label inside it. */
+  .league-menu .league-opt { display: flex; align-items: center; gap: 9px;
+    padding: 8px 9px; border-radius: 7px; cursor: pointer; font-size: 13.5px;
+    font-weight: 500; letter-spacing: normal; text-transform: none;
+    color: var(--text); margin: 0; }
+  .league-menu .league-opt:active { background: var(--surface-2); }
+  .league-menu .league-opt input { width: 17px; height: 17px; accent-color: var(--for);
+    flex: none; margin: 0; }
+  .league-menu .league-opt.all { font-weight: 650; border-bottom: 1px solid var(--line);
+    border-radius: 0; margin: 0 0 3px; }
   .row .ind { font-weight: 800; font-variant-numeric: tabular-nums;
     letter-spacing: -.5px; white-space: nowrap; }
   .row .ind .plus { color: var(--for); }
@@ -536,7 +559,13 @@
   <div class="filters">
     <div class="field"><label for="f-week">Week</label><select id="f-week"></select></div>
     <div class="field players-only"><label for="f-day">Day</label><select id="f-day"></select></div>
-    <div class="field players-only" style="grid-column:1/-1"><label>Leagues</label><div id="f-league-chips" class="league-chips"></div></div>
+    <div class="field players-only">
+      <label for="f-league-btn">Leagues</label>
+      <div class="league-select">
+        <button type="button" id="f-league-btn" class="league-trigger" aria-haspopup="true" aria-expanded="false"><span id="f-league-label">All leagues</span></button>
+        <div id="f-league-menu" class="league-menu" hidden></div>
+      </div>
+    </div>
     <div class="field players-only"><label for="f-side">For / Against</label><select id="f-side">
       <option value="all">All players</option>
       <option value="for">For me</option>
@@ -1302,11 +1331,21 @@ function fillLeagues() {
     if (!selectedLeagues.length) selectedLeagues = leagues.slice();
   }
   const allOn = selectedLeagues.length === leagues.length;
-  el("f-league-chips").innerHTML =
-    `<button type="button" class="lchip all${allOn ? " on" : ""}" data-league="__all">All</button>` +
+  el("f-league-menu").innerHTML =
+    `<label class="league-opt all"><input type="checkbox" data-league="__all"${allOn ? " checked" : ""}> All leagues</label>` +
     leagues.map(n =>
-      `<button type="button" class="lchip${selectedLeagues.includes(n) ? " on" : ""}" ` +
-      `data-league="${esc(n)}">${esc(n)}</button>`).join("");
+      `<label class="league-opt"><input type="checkbox" data-league="${esc(n)}"` +
+      `${selectedLeagues.includes(n) ? " checked" : ""}> ${esc(n)}</label>`).join("");
+  updateLeagueLabel();
+}
+
+function updateLeagueLabel() {
+  const leagues = (BUNDLE.leagues || []).map(l => l.name);
+  const allOn = selectedLeagues && selectedLeagues.length === leagues.length;
+  el("f-league-label").textContent = allOn ? "All leagues"
+    : selectedLeagues.length === 1 ? selectedLeagues[0]
+    : selectedLeagues.join(", ");
+  el("f-league-btn").classList.toggle("active", !allOn);
 }
 
 function resetFilters() {
@@ -1419,21 +1458,40 @@ el("filters-toggle").addEventListener("click", () => {
 el("search").addEventListener("input", render);
 el("reset").addEventListener("click", resetFilters);
 
-el("f-league-chips").addEventListener("click", (e) => {
-  const chip = e.target.closest(".lchip");
-  if (!chip) return;
+el("f-league-btn").addEventListener("click", () => {
+  const menu = el("f-league-menu");
+  menu.hidden = !menu.hidden;
+  el("f-league-btn").setAttribute("aria-expanded", String(!menu.hidden));
+});
+el("f-league-menu").addEventListener("change", (e) => {
+  const cb = e.target.closest("input[type=checkbox]");
+  if (!cb) return;
   const leagues = (BUNDLE.leagues || []).map(l => l.name);
-  const name = chip.getAttribute("data-league");
+  const name = cb.getAttribute("data-league");
+  const boxes = el("f-league-menu").querySelectorAll("input[type=checkbox]");
   if (name === "__all") {
     selectedLeagues = leagues.slice();
+    boxes.forEach(x => { x.checked = true; });
   } else {
     const i = selectedLeagues.indexOf(name);
-    if (i === -1) selectedLeagues.push(name); else selectedLeagues.splice(i, 1);
-    if (!selectedLeagues.length) selectedLeagues = leagues.slice();
+    if (cb.checked && i === -1) selectedLeagues.push(name);
+    else if (!cb.checked && i !== -1) selectedLeagues.splice(i, 1);
+    if (!selectedLeagues.length) {
+      selectedLeagues = leagues.slice();
+      boxes.forEach(x => { x.checked = true; });
+    }
+    const allBox = el("f-league-menu").querySelector('input[data-league="__all"]');
+    if (allBox) allBox.checked = selectedLeagues.length === leagues.length;
   }
-  fillLeagues();
+  updateLeagueLabel();
   saveFilterPrefs();
   render();
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".league-select") && !el("f-league-menu").hidden) {
+    el("f-league-menu").hidden = true;
+    el("f-league-btn").setAttribute("aria-expanded", "false");
+  }
 });
 
 el("list").addEventListener("click", (e) => {
