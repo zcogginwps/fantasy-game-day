@@ -11,7 +11,7 @@ import getpass
 import subprocess
 import sys
 
-from fantasy import bundle, emailer, timezones
+from fantasy import bundle, emailer
 
 
 def main():
