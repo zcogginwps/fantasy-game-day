@@ -455,6 +455,29 @@
     background: var(--surface-2); color: var(--text); border: 1px solid var(--line);
   }
   .notif ol { margin: 9px 0 0; padding-left: 20px; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+  /* ===== Player updates (features 1-6) ===== */
+  .league-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .lchip { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px;
+    border-radius: 20px; background: var(--surface); color: var(--muted);
+    border: 1px solid var(--line); cursor: pointer; }
+  .lchip.on { background: var(--surface-2); color: var(--text); border-color: var(--text); }
+  .row .ind { font-weight: 800; font-variant-numeric: tabular-nums;
+    letter-spacing: -.5px; white-space: nowrap; }
+  .row .ind .plus { color: var(--for); }
+  .row .ind .minus { color: var(--against); }
+  .row .score { margin-left: 0; }
+  .row-expand { flex: none; background: none; border: 0; color: var(--muted);
+    font-size: 12px; line-height: 1; padding: 5px 3px; cursor: pointer;
+    transition: transform .18s ease; }
+  .row-expand.open { transform: rotate(180deg); color: var(--text); }
+  .expanded { margin: 0 0 6px; }
+  .expanded .card { margin-bottom: 0; }
+  .cols.one { grid-template-columns: 1fr; }
+  .entry { display: flex; align-items: baseline; gap: 5px; }
+  .entry .lg { flex: 1 1 auto; min-width: 0; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .entry .slot { flex: none; margin-left: 0; }
 </style>
 </head>
 <body>
@@ -502,7 +525,7 @@
   <div class="filters">
     <div class="field"><label for="f-week">Week</label><select id="f-week"></select></div>
     <div class="field players-only"><label for="f-day">Day</label><select id="f-day"></select></div>
-    <div class="field players-only"><label for="f-league">League</label><select id="f-league"></select></div>
+    <div class="field players-only" style="grid-column:1/-1"><label>Leagues</label><div id="f-league-chips" class="league-chips"></div></div>
     <div class="field players-only"><label for="f-side">For / Against</label><select id="f-side">
       <option value="all">All players</option>
       <option value="for">For me</option>
@@ -573,7 +596,26 @@ const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 const el = id => document.getElementById(id);
-const controls = ["f-week", "f-day", "f-league", "f-side", "f-slot", "f-injury"];
+const controls = ["f-week", "f-day", "f-side", "f-slot", "f-injury"];
+let selectedLeagues = null;
+let expandedKey = null;
+
+const FILTER_PREF_KEY = "filters";
+function loadFilterPrefs() {
+  try { return JSON.parse(localStorage.getItem(FILTER_PREF_KEY) || "{}") || {}; }
+  catch (e) { return {}; }
+}
+function saveFilterPrefs() {
+  const prefs = { slot: el("f-slot").value, side: el("f-side").value,
+                  injury: el("f-injury").value, leagues: selectedLeagues };
+  try { localStorage.setItem(FILTER_PREF_KEY, JSON.stringify(prefs)); } catch (e) {}
+}
+function applyFilterPrefs() {
+  const p = loadFilterPrefs();
+  el("f-slot").value = ["all","starters","bench"].includes(p.slot) ? p.slot : "starters";
+  el("f-side").value = ["all","for","against","both"].includes(p.side) ? p.side : "all";
+  el("f-injury").value = ["all","injured","out","healthy"].includes(p.injury) ? p.injury : "all";
+}
 
 function weekReport() {
   return (BUNDLE.weeks || {})[el("f-week").value] || { days: [] };
@@ -582,9 +624,10 @@ function weekReport() {
 /* ---- filtering -------------------------------------------------------- */
 
 function entryMatches(entry) {
-  const league = el("f-league").value;
   const slot = el("f-slot").value;
-  if (league !== "all" && entry.league !== league) return false;
+  const all = (BUNDLE.leagues || []).map(l => l.name);
+  const allOn = !selectedLeagues || selectedLeagues.length === all.length;
+  if (!allOn && !selectedLeagues.includes(entry.league)) return false;
   if (slot === "starters" && !entry.starting) return false;
   if (slot === "bench" && entry.starting) return false;
   return true;
@@ -647,15 +690,13 @@ function visibleDays() {
 
 /* ---- rendering -------------------------------------------------------- */
 
-function entryHtml(entry, isOpponent) {
+function entryHtml(entry) {
   const bench = entry.starting ? "" : " bench";
-  const vs = isOpponent && entry.opponent
-    ? ` <span class="vs">· ${esc(entry.opponent)}</span>` : "";
   return `<div class="entry${bench}"><span class="lg">${esc(entry.league)}</span>` +
-         `<span class="slot">${esc(entry.slot)}</span>${vs}</div>`;
+         `<span class="slot">${esc(entry.slot)}</span></div>`;
 }
 
-function cardHtml(p) {
+function cardHtml(p, key) {
   // Before kickoff every score is 0.0, which is noise rather than information.
   const started = p.game_state && p.game_state !== "pre";
   const score = started && p.score_label
@@ -669,12 +710,15 @@ function cardHtml(p) {
       `${p.injury_body_part ? " · " + esc(p.injury_body_part) : ""}</span>`
     : "";
 
-  const col = (entries, kind, heading, isOpponent) => entries.length
-    ? `<div class="col ${kind}"><h4>${heading}</h4>` +
-      entries.map(e => entryHtml(e, isOpponent)).join("") + `</div>`
-    : `<div class="col ${kind} empty"><h4>${heading}</h4><div class="entry">—</div></div>`;
+  const forCol = `<div class="col for"><h4>For me</h4>` +
+    p.for_me.map(entryHtml).join("") + `</div>`;
+  const againstCol = `<div class="col against"><h4>Against me</h4>` +
+    p.against_me.map(entryHtml).join("") + `</div>`;
+  const cols = p.verdict === "for" ? `<div class="cols one">${forCol}</div>`
+             : p.verdict === "against" ? `<div class="cols one">${againstCol}</div>`
+             : `<div class="cols">${forCol}${againstCol}</div>`;
 
-  return `<article class="card ${p.verdict}">
+  return `<article class="card ${p.verdict}"${key ? ` data-key="${esc(key)}"` : ""}>
     <div class="top">
       <span class="name">${esc(p.name)}</span>
       <span class="meta">${esc(p.position)} · ${esc(p.team)}</span>
@@ -685,14 +729,11 @@ function cardHtml(p) {
       ${inj}
       ${score}
     </div>
-    <div class="cols">
-      ${col(p.for_me, "for", "For me", false)}
-      ${col(p.against_me, "against", "Against me", true)}
-    </div>
+    ${cols}
   </article>`;
 }
 
-function rowHtml(p) {
+function rowHtml(p, key) {
   const started = p.game_state && p.game_state !== "pre";
   const score = started && p.score_label
     ? `<span class="score${p.game_state === "in" ? " live" : ""}">${esc(p.score_label)}</span>`
@@ -700,10 +741,16 @@ function rowHtml(p) {
   const injBad = BAD_INJURIES.indexOf(p.injury_status) !== -1;
   const inj = p.injury_status
     ? ` · <span class="inj${injBad ? " bad" : ""}">${esc(p.injury_status)}</span>` : "";
-  return `<div class="row ${p.verdict}">
+  const ind =
+    (p.for_me.length ? `<span class="plus">${"+".repeat(p.for_me.length)}</span>` : "") +
+    (p.against_me.length ? `<span class="minus">${"-".repeat(p.against_me.length)}</span>` : "");
+  const open = key === expandedKey;
+  return `<div class="row ${p.verdict}" data-key="${esc(key)}">
     <span class="name">${esc(p.name)}</span>
     <span class="meta">${esc(p.position)} · ${esc(p.team)}${inj}</span>
+    <span class="ind">${ind}</span>
     ${score}
+    <button class="row-expand${open ? " open" : ""}" data-expand="${esc(key)}" type="button" aria-label="Expand player">&#9662;</button>
   </div>`;
 }
 
@@ -1071,11 +1118,18 @@ function render() {
     // Split by kickoff wave first - a Sunday is three separate slates and one
     // list of 77 is unreadable - then within each wave your players come first
     // and opponents last.
+    const waveOver = {};
+    [...new Set(players.map(x => x.wave))].forEach(w => {
+      waveOver[w] = players.filter(x => x.wave === w)
+                           .every(x => x.game_state === "post");
+    });
+    const wrank = x => (waveOver[x.wave] ? 1000 : 0) + x.wave;
+
     // Within each colour group, once games are under way, the biggest scores
     // rise to the top so the players making the most impact are seen first.
     // Unscored (pre-kickoff) players keep the fixed kickoff/position order.
     players.sort((a, b) =>
-      a.wave - b.wave ||
+      wrank(a) - wrank(b) ||
       VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] ||
       ((b.points_max === null) - (a.points_max === null)) ||
       ((b.points_max || 0) - (a.points_max || 0)) ||
@@ -1109,7 +1163,13 @@ function render() {
                 `${GROUP_LABEL[p.verdict]} · ${count}</div>`;
         lastVerdict = p.verdict;
       }
-      html += viewMode === "condensed" ? rowHtml(p) : cardHtml(p);
+      const key = day.date + "|" + p.name + "|" + p.team;
+      if (viewMode === "condensed") {
+        html += rowHtml(p, key);
+        if (key === expandedKey) html += `<div class="expanded">${cardHtml(p, key)}</div>`;
+      } else {
+        html += cardHtml(p, key);
+      }
       totals[p.verdict]++;
       shown++;
     });
@@ -1127,11 +1187,14 @@ function render() {
   controls.forEach(id => {
     const select = el(id);
     const isDefault = select.value === "all" ||
+      (id === "f-slot" && select.value === "starters") ||
       (id === "f-week" && select.value === String(BUNDLE.current.week)) ||
       (id === "f-day" && select.value === BUNDLE.current.date);
     select.classList.toggle("active", !isDefault);
     if (!isDefault) activeFilters++;
   });
+  const allLeagues = (BUNDLE.leagues || []).map(l => l.name);
+  if (selectedLeagues && selectedLeagues.length !== allLeagues.length) activeFilters++;
   el("filters-count").textContent = activeFilters;
   el("filters-count").hidden = activeFilters === 0;
 
@@ -1171,17 +1234,34 @@ function fillDays(preferDate) {
 }
 
 function fillLeagues() {
-  el("f-league").innerHTML =
-    `<option value="all">All leagues</option>` +
-    (BUNDLE.leagues || []).map(l =>
-      `<option value="${esc(l.name)}">${esc(l.name)}</option>`).join("");
+  const leagues = (BUNDLE.leagues || []).map(l => l.name);
+  if (selectedLeagues === null) {
+    const prefs = loadFilterPrefs();
+    const saved = Array.isArray(prefs.leagues)
+      ? prefs.leagues.filter(n => leagues.includes(n)) : null;
+    selectedLeagues = (saved && saved.length) ? saved : leagues.slice();
+  } else {
+    selectedLeagues = selectedLeagues.filter(n => leagues.includes(n));
+    if (!selectedLeagues.length) selectedLeagues = leagues.slice();
+  }
+  const allOn = selectedLeagues.length === leagues.length;
+  el("f-league-chips").innerHTML =
+    `<button type="button" class="lchip all${allOn ? " on" : ""}" data-league="__all">All</button>` +
+    leagues.map(n =>
+      `<button type="button" class="lchip${selectedLeagues.includes(n) ? " on" : ""}" ` +
+      `data-league="${esc(n)}">${esc(n)}</button>`).join("");
 }
 
 function resetFilters() {
   fillWeeks();
   fillDays(BUNDLE.current.date);
-  ["f-league", "f-side", "f-slot", "f-injury"].forEach(id => { el(id).value = "all"; });
+  el("f-side").value = "all";
+  el("f-slot").value = "starters";
+  el("f-injury").value = "all";
+  selectedLeagues = (BUNDLE.leagues || []).map(l => l.name);
+  fillLeagues();
   el("search").value = "";
+  saveFilterPrefs();
   render();
 }
 
@@ -1201,6 +1281,7 @@ async function refresh() {
   } catch (err) {
     return;  // Offline or mid-deploy; the next tick will pick it up.
   }
+  if (!bundle || bundle.empty || !bundle.weeks || !bundle.current) return;
 
   const keep = {};
   controls.forEach(id => { keep[id] = el(id).value; });
@@ -1234,6 +1315,7 @@ function paint(bundle) {
   fillWeeks();
   fillDays(bundle.current.date);
   fillLeagues();
+  applyFilterPrefs();
 
   const changes = bundle.changes || [];
   el("changes").innerHTML = changes.length
@@ -1272,10 +1354,35 @@ el("filters-toggle").addEventListener("click", () => {
   el("filters-panel").classList.toggle("open", open);
   if (open) el("search").focus({ preventScroll: true });
 });
-["f-day", "f-league", "f-side", "f-slot", "f-injury"].forEach(id =>
-  el(id).addEventListener("change", render));
+["f-day", "f-side", "f-slot", "f-injury"].forEach(id =>
+  el(id).addEventListener("change", () => { saveFilterPrefs(); render(); }));
 el("search").addEventListener("input", render);
 el("reset").addEventListener("click", resetFilters);
+
+el("f-league-chips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".lchip");
+  if (!chip) return;
+  const leagues = (BUNDLE.leagues || []).map(l => l.name);
+  const name = chip.getAttribute("data-league");
+  if (name === "__all") {
+    selectedLeagues = leagues.slice();
+  } else {
+    const i = selectedLeagues.indexOf(name);
+    if (i === -1) selectedLeagues.push(name); else selectedLeagues.splice(i, 1);
+    if (!selectedLeagues.length) selectedLeagues = leagues.slice();
+  }
+  fillLeagues();
+  saveFilterPrefs();
+  render();
+});
+
+el("list").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-expand]");
+  if (!btn) return;
+  const k = btn.getAttribute("data-expand");
+  expandedKey = (expandedKey === k) ? null : k;
+  render();
+});
 
 /* ---- push notification enrolment ---------------------------------------
 
