@@ -66,6 +66,21 @@ def get_projections(season, week):
     return projections
 
 
+def get_week_stats(season, week):
+    """Every player's actual stats for one week, keyed by Sleeper player id.
+
+    One public call covers all players, so the same response serves every
+    league. Cached briefly because stats move during games but not second to
+    second, and the scheduler already runs only every couple of minutes.
+    """
+    url = "https://api.sleeper.app/v1/stats/nfl/regular/%s/%s" % (season, week)
+    try:
+        data = get_json_cached(url, 60, "sleeper_stats_%s_%s" % (season, week))
+    except FetchError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def get_leagues(user_id, season):
     return get_json("%s/user/%s/leagues/nfl/%s" % (BASE, user_id, season)) or []
 

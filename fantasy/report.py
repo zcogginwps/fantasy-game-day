@@ -21,6 +21,37 @@ from .webreq import FetchError
 
 BENCH_SLOTS = ("BN", "IR", "TAXI")
 
+# Scoring counting stats worth showing on a player card, in reading order.
+STAT_DISPLAY = [
+    ("pass_yd", "Pass Yd"), ("pass_td", "Pass TD"), ("pass_int", "INT"),
+    ("pass_2pt", "2PT"),
+    ("rush_yd", "Rush Yd"), ("rush_td", "Rush TD"), ("rush_2pt", "2PT"),
+    ("rec", "Rec"), ("rec_yd", "Rec Yd"), ("rec_td", "Rec TD"), ("rec_2pt", "2PT"),
+    ("fum_lost", "Fum Lost"),
+    ("xpm", "XP"), ("fgm", "FG"), ("fgmiss", "FG Miss"),
+    ("sack", "Sack"), ("int", "INT"), ("ff", "FF"), ("fum_rec", "Fum Rec"),
+    ("def_td", "Def TD"), ("safe", "Safety"), ("blk_kick", "Blk"),
+    ("def_st_td", "ST TD"), ("pts_allow", "Pts Allow"),
+]
+
+
+def player_stat_line(stats):
+    """The non-zero scoring stats for one player, as {label, value} pairs."""
+    out = []
+    for key, label in STAT_DISPLAY:
+        raw = (stats or {}).get(key)
+        if not raw:
+            continue
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if value == 0:
+            continue
+        out.append({"label": label,
+                    "value": int(value) if value.is_integer() else round(value, 1)})
+    return out
+
 POSITION_ORDER = {"QB": 0, "RB": 1, "WR": 2, "TE": 3, "FLEX": 4, "K": 5, "DEF": 6}
 
 # Your players first, conflicts next, opponents last - the app groups by this
@@ -214,9 +245,10 @@ class Assembler(object):
     against the same roster data.
     """
 
-    def __init__(self, leagues, sleeper_players, config):
+    def __init__(self, leagues, sleeper_players, config, week_stats=None):
         self.leagues = leagues
         self.sleeper_players = sleeper_players
+        self.week_stats = week_stats or {}
         self.include_my_bench, self.include_opponent_bench = _bench_settings(config)
 
         # Two ways into Sleeper's data, because espn_id is not always present.
@@ -227,6 +259,15 @@ class Assembler(object):
                 self.by_espn_id[str(player["espn_id"])] = player_id
             record = sleeper_client.player_record(player)
             self.by_name.setdefault(_name_key(record), player_id)
+
+    def stats_id_for(self, record):
+        """Sleeper player id for a record, so its week stats can be found."""
+        if record.get("position") == "DEF" and record.get("team"):
+            return record["team"]
+        espn_id = record.get("espn_id")
+        if espn_id and str(espn_id) in self.by_espn_id:
+            return self.by_espn_id[str(espn_id)]
+        return self.by_name.get(_name_key(record))
 
     def record_for(self, id_source, player_id, league):
         """The best available player record for a platform-local id."""
@@ -344,6 +385,8 @@ class Assembler(object):
                 "against_me": sorted(row.against_me, key=lambda e: e["league"]),
                 "scores": distinct_scores(row.for_me + row.against_me),
                 "score_label": score_label(row.for_me + row.against_me),
+                "stats": player_stat_line(
+                    self.week_stats.get(self.stats_id_for(row.record) or "")),
                 "starting_anywhere": any(
                     e["starting"] for e in row.for_me + row.against_me),
             })
@@ -415,7 +458,9 @@ def build_week(config, season, week, tz, changes_for_date=None,
     """Every game day in one fantasy week, sharing a single league fetch."""
     errors = []
     leagues, sleeper_players = _load(config, season, week, tz, errors)
-    assembler = Assembler(leagues, sleeper_players, config)
+    week_stats = ({} if current_week is not None and int(week) != int(current_week)
+                  else sleeper_client.get_week_stats(season, week))
+    assembler = Assembler(leagues, sleeper_players, config, week_stats)
 
     days = []
     names_by_date = {}
