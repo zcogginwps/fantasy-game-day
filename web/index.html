@@ -494,11 +494,22 @@
   .row .ind .minus { color: var(--against); }
   .row .score { margin-left: 0; }
   .row-expand { flex: none; background: none; border: 0; color: var(--muted);
-    font-size: 12px; line-height: 1; padding: 5px 3px; cursor: pointer;
+    font-size: 17px; line-height: 1; padding: 4px 4px; cursor: pointer;
     transition: transform .18s ease; }
   .row-expand.open { transform: rotate(180deg); color: var(--text); }
-  .expanded { margin: 0 0 6px; }
-  .expanded .card { margin-bottom: 0; }
+  /* Blended expansion: reads as a continuation of the row above it, sharing
+     the verdict's left edge, not a second free-standing card (#2). It tucks
+     under the row (negative top margin hides the row's rounded bottom). */
+  .expanded { margin: -4px 0 6px; background: var(--surface);
+    border: 1px solid var(--line); border-top: 0;
+    border-left: 4px solid var(--line); border-radius: 0 0 8px 8px; }
+  .expanded.for { border-left-color: var(--for); }
+  .expanded.against { border-left-color: var(--against); }
+  .expanded.both { border-left-color: var(--both); }
+  .exp-body { padding: 7px 11px 10px; }
+  .exp-game { font-size: 12px; color: var(--muted); }
+  .exp-body .statline { margin-top: 6px; }
+  .exp-body .cols { margin-top: 8px; }
   .cols.one { grid-template-columns: 1fr; }
   .entry { display: flex; align-items: baseline; gap: 5px; }
   .entry .lg { flex: 1 1 auto; min-width: 0; white-space: nowrap;
@@ -739,6 +750,27 @@ function entryHtml(entry) {
          `<span class="slot">${esc(entry.slot)}</span></div>`;
 }
 
+// One-sided players get the full width for their league names; conflicts keep
+// two columns with the names trimmed to a line each (#3).
+function colsHtml(p) {
+  const forCol = `<div class="col for"><h4>For me</h4>` +
+    p.for_me.map(entryHtml).join("") + `</div>`;
+  const againstCol = `<div class="col against"><h4>Against me</h4>` +
+    p.against_me.map(entryHtml).join("") + `</div>`;
+  return p.verdict === "for" ? `<div class="cols one">${forCol}</div>`
+       : p.verdict === "against" ? `<div class="cols one">${againstCol}</div>`
+       : `<div class="cols">${forCol}${againstCol}</div>`;
+}
+
+// Only the stats that actually scored (or cost points) show, and only once a
+// game is under way (#3).
+function statsHtml(p) {
+  return (p.stats && p.stats.length)
+    ? `<div class="statline">` + p.stats.map(st =>
+        `<span class="stat"><b>${esc(String(st.value))}</b>${esc(st.label)}</span>`).join("") + `</div>`
+    : "";
+}
+
 function cardHtml(p, key) {
   // Before kickoff every score is 0.0, which is noise rather than information.
   const started = p.game_state && p.game_state !== "pre";
@@ -753,20 +785,6 @@ function cardHtml(p, key) {
       `${p.injury_body_part ? " · " + esc(p.injury_body_part) : ""}</span>`
     : "";
 
-  const forCol = `<div class="col for"><h4>For me</h4>` +
-    p.for_me.map(entryHtml).join("") + `</div>`;
-  const againstCol = `<div class="col against"><h4>Against me</h4>` +
-    p.against_me.map(entryHtml).join("") + `</div>`;
-  const cols = p.verdict === "for" ? `<div class="cols one">${forCol}</div>`
-             : p.verdict === "against" ? `<div class="cols one">${againstCol}</div>`
-             : `<div class="cols">${forCol}${againstCol}</div>`;
-  // Only the stats that actually scored (or cost points) show, and only once a
-  // game is under way (#3).
-  const stats = (p.stats && p.stats.length)
-    ? `<div class="statline">` + p.stats.map(st =>
-        `<span class="stat"><b>${esc(String(st.value))}</b>${esc(st.label)}</span>`).join("") + `</div>`
-    : "";
-
   return `<article class="card ${p.verdict}"${key ? ` data-key="${esc(key)}"` : ""} data-score="${p.points_max == null ? 0 : p.points_max}">
     <div class="top">
       <span class="name">${esc(p.name)}</span>
@@ -778,9 +796,21 @@ function cardHtml(p, key) {
       ${inj}
       ${score}
     </div>
-    ${stats}
-    ${cols}
+    ${statsHtml(p)}
+    ${colsHtml(p)}
   </article>`;
+}
+
+// The condensed row already carries the name, position, injury, +/- indicators
+// and score, so expanding it only needs the fields the row leaves out: the
+// matchup line, the scoring stats, and the league breakdown (#2). Repeating the
+// whole standard card here made one player look like two.
+function expandedHtml(p) {
+  return `<div class="exp-body">
+    <div class="exp-game">${esc(p.kickoff_label)} · ${esc(p.matchup)}</div>
+    ${statsHtml(p)}
+    ${colsHtml(p)}
+  </div>`;
 }
 
 function rowHtml(p, key) {
@@ -1254,7 +1284,9 @@ function render() {
       const key = day.date + "|" + p.name + "|" + p.team;
       if (viewMode === "condensed") {
         html += rowHtml(p, key);
-        if (key === expandedKey) html += `<div class="expanded">${cardHtml(p, key)}</div>`;
+        // Only one player open at a time. The row stays as the header and the
+        // panel below adds just the standard-view fields it doesn't show (#2).
+        if (key === expandedKey) html += `<div class="expanded ${p.verdict}">${expandedHtml(p)}</div>`;
       } else {
         html += cardHtml(p, key);
       }
