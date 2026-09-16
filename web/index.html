@@ -177,10 +177,12 @@
 
   .board-note { color: var(--muted); font-size: 11.5px; margin: 14px 4px 0; line-height: 1.5; }
 
-  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+  /* One line on a phone: the row never wraps and the pills stay compact. */
+  .chips { display: flex; gap: 5px; flex-wrap: nowrap; margin-top: 10px; }
   .chip {
-    font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
-    background: var(--surface-2); border: 1px solid var(--line); color: var(--muted);
+    font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 999px;
+    white-space: nowrap; background: var(--surface-2); border: 1px solid var(--line);
+    color: var(--muted);
   }
   .chip.for { color: var(--for); border-color: var(--for); background: var(--for-dim); }
   .chip.against { color: var(--against); border-color: var(--against); background: var(--against-dim); }
