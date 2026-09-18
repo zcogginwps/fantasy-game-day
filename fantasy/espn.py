@@ -117,9 +117,9 @@ def discover_leagues(config, season):
 def fetch_league(league_id, season, config, week=None):
     """Raw league payload with rosters, matchups and team metadata.
 
-    `week` pins the scoring period the roster totals are reported for. Without
-    it ESPN answers with whichever period it currently treats as live, so a
-    request for any other week still comes back carrying that period's points.
+    `week` pins the scoring period, so a past week comes back with the roster
+    as it stood then rather than today's. It does not affect the point totals
+    on the payload - those are read per week in `week_points` below.
     """
     cookies, _ = _cookies(config)
     url = (
@@ -146,8 +146,46 @@ def _slot_label(slot_id):
     return LINEUP_SLOTS.get(slot_id, "BN")
 
 
-def _roster_entries(team):
-    """Yield (espn_player_id, slot_label, raw_player, applied_points) for one team."""
+def week_points(player, week):
+    """This player's actual points for one scoring period.
+
+    ESPN reports a player's scoring several ways and only one of them is the
+    week. `appliedStatTotal` on the pool entry is the season to date, so early
+    in a season it happens to equal last week's score and reads as though the
+    week never advanced - it is a running total, not a weekly one.
+
+    The weekly number lives in the player's own stats array: the row whose
+    scoringPeriodId is this week and whose statSourceId is 0. Source 1 is the
+    projection, and rows with scoringPeriodId 0 are season aggregates.
+    """
+    stats = player.get("stats")
+    if not stats:
+        return None  # Nothing to read from: unknown, which is not the same as zero.
+
+    found = None
+    for row in stats:
+        if row.get("statSourceId") != 0:
+            continue  # A projection, not what was actually scored.
+        try:
+            if int(row.get("scoringPeriodId")) != int(week):
+                continue
+        except (TypeError, ValueError):
+            continue
+        applied = row.get("appliedTotal")
+        if applied is None:
+            continue
+        # statSplitTypeId 1 is the single-period split, the one that means
+        # "this week alone", so prefer it when more than one row qualifies.
+        if found is None or row.get("statSplitTypeId") == 1:
+            found = applied
+
+    # A week that has been scored always has a row. Its absence means the week
+    # has not been played yet, which is nothing scored rather than unknown.
+    return found if found is not None else 0.0
+
+
+def _roster_entries(team, week):
+    """Yield (espn_player_id, slot_label, raw_player, week_points) for one team."""
     roster = team.get("roster") or {}
     for entry in roster.get("entries") or []:
         pool = entry.get("playerPoolEntry") or {}
@@ -155,12 +193,8 @@ def _roster_entries(team):
         player_id = entry.get("playerId") or player.get("id")
         if player_id is None:
             continue
-        # appliedStatTotal is this league's scoring applied to whichever
-        # scoring period the payload was fetched for - see fetch_league's
-        # `week`. The player's own stats array also carries projections
-        # (statSourceId 1), which are not what we want to show.
         yield (str(player_id), _slot_label(entry.get("lineupSlotId")), player,
-               pool.get("appliedStatTotal"))
+               week_points(player, week))
 
 
 def player_record(player):
@@ -184,18 +218,6 @@ def load_league(league_id, season, week, config):
     player data so callers can fall back on it when Sleeper has no match.
     """
     payload = fetch_league(league_id, season, config, week)
-
-    # ESPN silently serves the live scoring period when it will not honour the
-    # one we asked for, and admits it only in this top-level field. Believing
-    # appliedStatTotal then prints last week's points beside this week's
-    # lineup, so drop the points in that case and keep the lineup, which is
-    # still right. A missing field means the payload predates the check.
-    served_period = payload.get("scoringPeriodId")
-    period_matches = (
-        week is None
-        or served_period is None
-        or int(served_period) == int(week)
-    )
 
     cookies, swid = _cookies(config)
     all_teams = payload.get("teams") or []
@@ -235,10 +257,10 @@ def load_league(league_id, season, week, config):
 
     def slots_for(team):
         slots = {}
-        for player_id, slot, player, applied in _roster_entries(team):
+        for player_id, slot, player, applied in _roster_entries(team, week):
             slots[player_id] = slot
             players[player_id] = player
-            if applied is not None and period_matches:
+            if applied is not None:
                 points[player_id] = applied
         return slots
 
@@ -266,8 +288,7 @@ def load_league(league_id, season, week, config):
                 rows.append((_slot_rank(slot_id), {
                     "player_id": str(player_id),
                     "slot": _slot_label(slot_id),
-                    "points": (pool.get("appliedStatTotal")
-                               if period_matches else None),
+                    "points": week_points(player, week),
                 }))
             rows.sort(key=lambda r: r[0])
             lineup = [row for _, row in rows]
