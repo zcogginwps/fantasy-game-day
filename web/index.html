@@ -1245,18 +1245,38 @@ function render() {
     // Split by kickoff wave first - a Sunday is three separate slates and one
     // list of 77 is unreadable - then within each wave your players come first
     // and opponents last.
-    const waveOver = {};
-    [...new Set(players.map(x => x.wave))].forEach(w => {
-      waveOver[w] = players.filter(x => x.wave === w)
-                           .every(x => x.game_state === "post");
+    // Normally a wave (kickoff slate) is one group, and a wave whose games are
+    // all final sinks to the bottom so the window in progress sits on top (#4).
+    // Exception (#5): when an earlier window has mostly finished but one game is
+    // still going while a later window has already kicked off - a delay,
+    // overtime, or just a slow game - that straggler is split into its own group
+    // so the finished games in its window can drop away without dragging it down.
+    const wavesPresent = [...new Set(players.map(p => p.wave))];
+    const laterStarted = {}, waveHasFinal = {};
+    wavesPresent.forEach(w => {
+      laterStarted[w] = players.some(p => p.wave > w && p.game_state !== "pre");
+      waveHasFinal[w] = players.some(p => p.wave === w && p.game_state === "post");
     });
-    const wrank = x => (waveOver[x.wave] ? 1000 : 0) + x.wave;
+    const isStraggler = p =>
+      p.game_state === "in" && laterStarted[p.wave] && waveHasFinal[p.wave];
+
+    // A wave sinks once every game left in it (stragglers pulled out) is final;
+    // a straggler keeps its window's rank so it stays near the top.
+    const waveOverEff = {};
+    wavesPresent.forEach(w => {
+      const rest = players.filter(p => p.wave === w && !isStraggler(p));
+      waveOverEff[w] = rest.length > 0 && rest.every(p => p.game_state === "post");
+    });
+    const groupKey = p => isStraggler(p)
+      ? "S:" + p.wave + ":" + p.game_label : "W:" + p.wave;
+    const groupRank = p => isStraggler(p)
+      ? p.wave : (waveOverEff[p.wave] ? 1000 : 0) + p.wave;
 
     // Within each colour group, once games are under way, the biggest scores
     // rise to the top so the players making the most impact are seen first.
-    // Unscored (pre-kickoff) players keep the fixed kickoff/position order.
     players.sort((a, b) =>
-      wrank(a) - wrank(b) ||
+      groupRank(a) - groupRank(b) ||
+      groupKey(a).localeCompare(groupKey(b)) ||
       VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] ||
       // Players whose game hasn't kicked off (null points) sink to the bottom of
       // their group, below anyone whose game is under way - even at 0 points.
@@ -1270,23 +1290,29 @@ function render() {
       html += `<div class="day-head">${esc(day.date_label)} · ${players.length}</div>`;
     }
 
-    // A day with a single kickoff needs no wave heading; each card shows its
+    // A day with a single group needs no window heading; each card shows its
     // own time already.
-    const multipleWaves = new Set(players.map(p => p.wave)).size > 1;
+    const showHeads = new Set(players.map(groupKey)).size > 1;
 
-    let lastWave = null, lastVerdict = null;
+    let lastGroup = null, lastVerdict = null;
     players.forEach(p => {
-      if (multipleWaves && p.wave !== lastWave) {
-        const inWave = players.filter(x => x.wave === p.wave);
-        const times = [...new Set(inWave.map(x => x.kickoff_label))].join(" & ");
-        html += `<div class="wave-head">${esc(p.wave_name)} ` +
-                `<span>· ${esc(times)} · ${inWave.length}</span></div>`;
-        lastWave = p.wave;
-        lastVerdict = null;  // Verdict headings restart inside each wave.
+      const gk = groupKey(p);
+      if (showHeads && gk !== lastGroup) {
+        if (isStraggler(p)) {
+          html += `<div class="wave-head">${esc(p.wave_name)} ` +
+                  `<span>· ${esc(p.kickoff_label)} · Still Playing</span></div>`;
+        } else {
+          const inWave = players.filter(x => groupKey(x) === gk);
+          const times = [...new Set(inWave.map(x => x.kickoff_label))].join(" & ");
+          html += `<div class="wave-head">${esc(p.wave_name)} ` +
+                  `<span>· ${esc(times)} · ${inWave.length}</span></div>`;
+        }
+        lastGroup = gk;
+        lastVerdict = null;  // Verdict headings restart inside each group.
       }
       if (p.verdict !== lastVerdict) {
-        const scope = multipleWaves
-          ? players.filter(x => x.wave === p.wave) : players;
+        const scope = showHeads
+          ? players.filter(x => groupKey(x) === gk) : players;
         const count = scope.filter(x => x.verdict === p.verdict).length;
         html += `<div class="group-head ${p.verdict}">` +
                 `${GROUP_LABEL[p.verdict]} · ${count}</div>`;
