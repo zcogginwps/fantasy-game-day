@@ -377,6 +377,9 @@ class Assembler(object):
                 "kickoff_label": game_dict["kickoff_label"],
                 "game_label": game_dict["label"],
                 "game_state": game_dict["state"],
+                # ESPN's live status line, e.g. "Q3 5:24", "Halftime", "Final".
+                # Shown on the card so a live game reads how much is left.
+                "status_detail": game_dict["status_detail"],
                 "matchup": "%s %s" % (
                     "vs" if game.is_home(team) else "@", opponent_team),
                 "wave": wave_order,

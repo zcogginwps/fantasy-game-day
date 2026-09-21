@@ -773,6 +773,13 @@ function statsHtml(p) {
     : "";
 }
 
+// Before kickoff show the start time; once the game is under way show the live
+// clock ("Q3 5:24") and "Final" after, so the card reads how much is left.
+function timeLabel(p) {
+  return (p.game_state && p.game_state !== "pre" && p.status_detail)
+    ? p.status_detail : p.kickoff_label;
+}
+
 function cardHtml(p, key) {
   // Before kickoff every score is 0.0, which is noise rather than information.
   const started = p.game_state && p.game_state !== "pre";
@@ -794,7 +801,7 @@ function cardHtml(p, key) {
       <span class="flag ${p.verdict}">${VERDICT_LABEL[p.verdict]}</span>
     </div>
     <div class="line2">
-      <span class="kick">${esc(p.kickoff_label)} · ${esc(p.matchup)}</span>
+      <span class="kick">${esc(timeLabel(p))} · ${esc(p.matchup)}</span>
       ${inj}
       ${score}
     </div>
@@ -809,7 +816,7 @@ function cardHtml(p, key) {
 // whole standard card here made one player look like two.
 function expandedHtml(p) {
   return `<div class="exp-body">
-    <div class="exp-game">${esc(p.kickoff_label)} · ${esc(p.matchup)}</div>
+    <div class="exp-game">${esc(timeLabel(p))} · ${esc(p.matchup)}</div>
     ${statsHtml(p)}
     ${colsHtml(p)}
   </div>`;
@@ -1251,7 +1258,9 @@ function render() {
     players.sort((a, b) =>
       wrank(a) - wrank(b) ||
       VERDICT_RANK[a.verdict] - VERDICT_RANK[b.verdict] ||
-      ((b.points_max === null) - (a.points_max === null)) ||
+      // Players whose game hasn't kicked off (null points) sink to the bottom of
+      // their group, below anyone whose game is under way - even at 0 points.
+      ((a.points_max === null) - (b.points_max === null)) ||
       ((b.points_max || 0) - (a.points_max || 0)) ||
       a.kickoff_utc.localeCompare(b.kickoff_utc) ||
       (a.starting_anywhere === b.starting_anywhere ? 0 : a.starting_anywhere ? -1 : 1) ||
