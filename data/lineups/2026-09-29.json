@@ -5,7 +5,6 @@
    "Trevor Lawrence": "QB",
    "Bijan Robinson": "RB1",
    "Ashton Jeanty": "RB2",
-   "Justin Jefferson": "WR1",
    "Jaylen Waddle": "WR2",
    "Mark Andrews": "TE",
    "DJ Moore": "FLEX1",
@@ -13,13 +12,14 @@
    "Jacoby Brissett": "SUPER_FLEX",
    "Jake Bates": "K",
    "Ricky Pearsall": "IR",
-   "Kyler Murray": "IR",
+   "Justin Jefferson": "IR",
    "Tank Dell": "IR",
    "Chris Rodriguez": "BN",
    "Brian Thomas": "BN",
    "Kyle Monangai": "BN",
    "Antonio Williams": "BN",
    "Mike Washington": "BN",
+   "Kyler Murray": "BN",
    "Romeo Doubs": "BN"
   },
   "Nash\u001fLamar quit Njokin around": {
