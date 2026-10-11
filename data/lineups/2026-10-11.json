@@ -81,7 +81,7 @@
    "Braelon Allen": "RB1",
    "Jeremiyah Love": "RB2",
    "KC Concepcion": "WR1",
-   "Jordan Addison": "WR2",
+   "Germie Bernard": "WR2",
    "Wan'Dale Robinson": "WR3",
    "Isaiah Likely": "TE",
    "Brenton Strange": "FLEX1",
@@ -96,7 +96,6 @@
    "Shedeur Sanders": "BN",
    "Kyle Monangai": "BN",
    "Isaac TeSlaa": "BN",
-   "Germie Bernard": "BN",
    "Omar Cooper": "BN",
    "Mike Washington": "BN",
    "Travis Kelce": "BN",
@@ -105,7 +104,8 @@
    "Treylon Burks": "BN",
    "Kenneth Walker": "BN",
    "Brian Robinson": "BN",
-   "Michael Mayer": "BN"
+   "Michael Mayer": "BN",
+   "Jordan Addison": "BN"
   },
   "Victorious Secret - Dynasty\u001fKeith\u2019s last mistake ": {
    "Jameis Winston": "QB",
@@ -115,7 +115,7 @@
    "Deebo Samuel": "WR2",
    "Ted Hurst": "WR3",
    "T.J. Hockenson": "TE",
-   "Kendre Miller": "FLEX1",
+   "Dallas Goedert": "FLEX1",
    "Kaleb Johnson": "FLEX2",
    "Kirk Cousins": "SUPER_FLEX",
    "Adam Randall": "IR",
@@ -131,12 +131,12 @@
    "Cade Klubnik": "BN",
    "Baker Mayfield": "BN",
    "Calvin Ridley": "BN",
-   "Dallas Goedert": "BN",
    "Drew Lock": "BN",
    "Dawson Knox": "BN",
    "Chuba Hubbard": "BN",
    "Joshua Palmer": "BN",
-   "Jalen Nailor": "BN"
+   "Jalen Nailor": "BN",
+   "Kendre Miller": "BN"
   },
   "Battle of the Covenant\u001fme": {
    "Trey McBride": "TE",
@@ -153,9 +153,9 @@
    "Evan McPherson": "K",
    "Keenan Allen": "WR",
    "Antonio Williams": "BN",
-   "Kaleb Johnson": "RB",
+   "Kaleb Johnson": "BN",
    "Vikings D/ST": "DEF",
-   "Devin Singletary": "BN"
+   "Will Shipley": "RB"
   },
   "Battle of the Covenant\u001fTILTED TOWERS": {
    "Amon-Ra St. Brown": "WR",
