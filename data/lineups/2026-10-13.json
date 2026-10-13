@@ -41,9 +41,9 @@
    "Carson Beck": "BN"
   },
   "Guys Being Dudes\u001fme": {
-   "Jalon Daniels": "QB",
+   "Patrick Mahomes": "QB",
    "Bijan Robinson": "RB1",
-   "David Montgomery": "RB2",
+   "Woody Marks": "RB2",
    "George Pickens": "WR1",
    "Terry McLaurin": "WR2",
    "Trey McBride": "TE",
@@ -52,9 +52,9 @@
    "Chad Ryland": "K",
    "Los Angeles Rams": "DEF",
    "Marvin Harrison": "BN",
-   "Woody Marks": "BN",
+   "Jalon Daniels": "BN",
    "Kalif Raymond": "BN",
-   "Patrick Mahomes": "BN",
+   "David Montgomery": "BN",
    "Kyle Pitts": "BN"
   },
   "Guys Being Dudes\u001fDallas Buyers Club": {
@@ -108,13 +108,13 @@
   },
   "Victorious Secret - Dynasty\u001fpraider80": {
    "Josh Allen": "QB",
-   "Jahmyr Gibbs": "RB1",
+   "Jonathan Taylor": "RB1",
    "Christian McCaffrey": "RB2",
    "Davante Adams": "WR1",
    "Keenan Allen": "WR2",
    "Michael Wilson": "WR3",
    "George Kittle": "TE",
-   "Jonathan Taylor": "FLEX1",
+   "Ladd McConkey": "FLEX1",
    "Bucky Irving": "FLEX2",
    "Jacoby Brissett": "SUPER_FLEX",
    "Jonathon Brooks": "IR",
@@ -122,7 +122,6 @@
    "Terrance Ferguson": "TAXI",
    "Pat Bryant": "TAXI",
    "Jalen McMillan": "BN",
-   "Ladd McConkey": "BN",
    "Kimani Vidal": "BN",
    "Zavion Thomas": "BN",
    "Jalon Daniels": "BN",
@@ -134,7 +133,8 @@
    "Jauan Jennings": "BN",
    "Alec Pierce": "BN",
    "Chig Okonkwo": "BN",
-   "Tyrod Taylor": "BN"
+   "Tyrod Taylor": "BN",
+   "Jahmyr Gibbs": "BN"
   },
   "Battle of the Covenant\u001fme": {
    "Trey McBride": "TE",
