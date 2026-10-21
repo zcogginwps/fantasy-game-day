@@ -85,7 +85,7 @@
    "Isaiah Likely": "TE",
    "Omar Cooper": "FLEX1",
    "Travis Kelce": "FLEX2",
-   "Kyle Monangai": "SUPER_FLEX",
+   "Jordan Addison": "SUPER_FLEX",
    "Ricky Pearsall": "IR",
    "Jacory Croskey-Merritt": "IR",
    "Will Howard": "TAXI",
@@ -93,6 +93,7 @@
    "Taylen Green": "TAXI",
    "Braelon Allen": "BN",
    "Shedeur Sanders": "BN",
+   "Kyle Monangai": "BN",
    "Isaac TeSlaa": "BN",
    "Mike Washington": "BN",
    "Josh Cameron": "BN",
@@ -103,8 +104,7 @@
    "Brian Robinson": "BN",
    "Brenton Strange": "BN",
    "Michael Mayer": "BN",
-   "Tank Dell": "BN",
-   "Jordan Addison": "BN"
+   "Tank Dell": "BN"
   },
   "Victorious Secret - Dynasty\u001fIron Maye-den": {
    "Drake Maye": "QB",
@@ -143,18 +143,18 @@
    "Ladd McConkey": "BN",
    "TreVeyon Henderson": "RB",
    "Sam LaPorta": "FLEX",
-   "Wan'Dale Robinson": "BN",
+   "Wan'Dale Robinson": "WR",
    "Patrick Mahomes": "QB",
    "Jonathon Brooks": "IR",
    "Kyler Murray": "BN",
    "Jordan Mason": "BN",
    "Mike Washington": "BN",
-   "Keenan Allen": "WR",
+   "Keenan Allen": "BN",
    "Antonio Williams": "BN",
    "Kendre Miller": "RB",
    "Pierre Strong": "BN",
-   "49ers D/ST": "DEF",
-   "Spencer Shrader": "K"
+   "Spencer Shrader": "K",
+   "Vikings D/ST": "DEF"
   },
   "Battle of the Covenant\u001fTrumps Right Ear": {
    "Jeremiyah Love": "RB",
