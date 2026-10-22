@@ -45,10 +45,10 @@
    "Bijan Robinson": "RB1",
    "Woody Marks": "RB2",
    "George Pickens": "WR1",
-   "Denzel Boston": "WR2",
+   "Tre Tucker": "WR2",
    "Trey McBride": "TE",
    "Tony Pollard": "FLEX1",
-   "Tre Tucker": "FLEX2",
+   "Denzel Boston": "FLEX2",
    "Chad Ryland": "K",
    "Los Angeles Rams": "DEF",
    "Marvin Harrison Jr.": "BN",
@@ -157,10 +157,10 @@
    "Vikings D/ST": "DEF"
   },
   "Battle of the Covenant\u001fTrumps Right Ear": {
-   "Jeremiyah Love": "RB",
+   "Jeremiyah Love": "BN",
    "Saquon Barkley": "RB",
-   "Jaylen Waddle": "WR",
-   "Tyler Warren": "TE",
+   "Jaylen Waddle": "BN",
+   "Tyler Warren": "BN",
    "Christian Watson": "WR",
    "Brian Thomas Jr.": "BN",
    "Justin Herbert": "BN",
@@ -168,12 +168,12 @@
    "Isiah Pacheco": "IR",
    "Chase McLaughlin": "K",
    "Buccaneers D/ST": "DEF",
-   "Emanuel Wilson": "BN",
+   "Emanuel Wilson": "RB",
    "Devaughn Vele": "FLEX",
-   "Tyler Higbee": "BN",
-   "DeMario Douglas": "BN",
+   "Tyler Higbee": "TE",
+   "DeMario Douglas": "WR",
    "Tyreek Hill": "BN",
-   "Jameis Winston": "QB"
+   "Michael Penix Jr.": "QB"
   }
  }
 }
