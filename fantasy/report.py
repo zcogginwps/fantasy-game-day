@@ -17,6 +17,7 @@ from . import lineups as lineups_module
 from . import schedule as schedule_module
 from . import scoreboard as scoreboard_module
 from . import sleeper as sleeper_client
+from . import timezones
 from .webreq import FetchError
 
 BENCH_SLOTS = ("BN", "IR", "TAXI")
@@ -74,6 +75,42 @@ def kickoff_wave(local_kickoff):
     if hour < 18.0:
         return 2, "Afternoon"
     return 3, "Night"
+
+
+def _eastern():
+    """US Eastern - the NFL's own reference clock, so the Thursday / Monday /
+    overseas-Sunday window of a game is the same for every user's timezone."""
+    try:
+        return timezones.zone("America/New_York")
+    except Exception:
+        return datetime.timezone(datetime.timedelta(hours=-5))
+
+
+def game_window(kickoff_utc, eastern):
+    """Tag a game by its schedule slot for the Rosters view: the Thursday game,
+    the Monday game, the overseas early-Sunday-morning window, or "" for a
+    normal slot. Judged in US Eastern so it holds across the user's timezone."""
+    et = kickoff_utc.astimezone(eastern)
+    dow = et.weekday()  # Mon=0 ... Sun=6
+    if dow == 3:
+        return "thursday"
+    if dow == 0:
+        return "monday"
+    if dow == 6 and (et.hour + et.minute / 60.0) < 11.0:
+        return "overseas"
+    return ""
+
+
+def _roster_game_info(game, tz, eastern):
+    """The slice of a game the Rosters view needs for one player."""
+    info = game.to_dict(tz)
+    return {
+        "kickoff_utc": info["kickoff_utc"],
+        "kickoff_label": info["kickoff_label"],
+        "label": info["label"],
+        "window": game_window(game.kickoff_utc, eastern),
+    }
+
 
 SEVERITY = {
     "Out": 4, "IR": 4, "Suspended": 4, "Doubtful": 3,
@@ -427,6 +464,38 @@ class Assembler(object):
             "counts": _counts(players),
         }, todays_names
 
+    def rosters(self, week_games, tz):
+        """Every league's full current-week roster - starters, bench, IR, taxi -
+        with each player's slot, points, injury and the game they play this week
+        (tagged Thursday / Monday / overseas-Sunday for the Rosters view)."""
+        eastern = _eastern()
+        out = []
+        for league in self.leagues:
+            id_source = league.get("id_source") or league["platform"]
+            league_points = league.get("points") or {}
+            players = []
+            for player_id, slot in (league.get("my_slots") or {}).items():
+                record = self.record_for(id_source, player_id, league)
+                if not record:
+                    continue
+                game = week_games.get(record.get("team"))
+                players.append({
+                    "name": record["name"],
+                    "position": record.get("position") or "",
+                    "team": record.get("team") or "",
+                    "slot": slot,
+                    "starting": _is_starting(slot),
+                    "points": league_points.get(player_id),
+                    "injury_status": record.get("injury_status") or "",
+                    "game": _roster_game_info(game, tz, eastern) if game else None,
+                })
+            out.append({
+                "league_name": league["league_name"],
+                "platform": league["platform"],
+                "players": players,
+            })
+        return out
+
 
 def _counts(players):
     return {
@@ -477,6 +546,7 @@ def build_week(config, season, week, tz, changes_for_date=None,
         # Matchup lineups span the whole week, not one day.
         week_games.update(schedule_module.index_by_team(games))
 
+    rosters = assembler.rosters(week_games, tz)
     projections = sleeper_client.get_projections(season, week)
     board = scoreboard_module.build(
         leagues,
@@ -503,6 +573,7 @@ def build_week(config, season, week, tz, changes_for_date=None,
         "season": str(season),
         "days": days,
         "scoreboard": board,
+        "rosters": rosters,
         "leagues": _league_summary(leagues),
         "bench": {"mine": include_my_bench, "opponent": include_opponent_bench},
         "changes": changes,

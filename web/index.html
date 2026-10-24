@@ -528,6 +528,58 @@
     font-size: 11.5px; color: var(--muted); line-height: 1.5; }
   .statline .stat b { color: var(--text); font-weight: 750;
     font-variant-numeric: tabular-nums; margin-right: 2px; }
+
+  /* Bottom section nav (Live / Rosters / Available) */
+  .wrap { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  .bottomnav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: flex; background: var(--surface); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .navbtn {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 8px 4px 7px; background: none; border: 0; color: var(--muted);
+    font-size: 11px; font-weight: 650; cursor: pointer;
+  }
+  .navbtn .navicon { font-size: 19px; line-height: 1; filter: grayscale(1); opacity: .65; }
+  .navbtn[aria-selected="true"] { color: var(--text); }
+  .navbtn[aria-selected="true"] .navicon { filter: none; opacity: 1; }
+
+  /* Rosters */
+  #rosters-list { margin-top: 10px; }
+  .roster-league { margin-bottom: 18px; }
+  .roster-league-head {
+    font-size: 15px; font-weight: 750; padding: 8px 2px 5px;
+    border-bottom: 1px solid var(--line); margin-bottom: 6px;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  .roster-league-head .plat { font-size: 10.5px; color: var(--muted);
+    font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .slot-group-head { font-size: 11px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .04em; margin: 10px 2px 4px; }
+  .rr { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--line); border-radius: 8px; margin-bottom: 4px;
+    font-size: 14px; }
+  .rr .slot { flex: none; width: 40px; font-weight: 750; font-size: 11.5px;
+    color: var(--muted); font-variant-numeric: tabular-nums; }
+  .rr .nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .rr .nm .pos { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .rr .gm { flex: none; font-size: 11.5px; color: var(--muted);
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rr .gm.bye { font-style: italic; }
+  .rr .pt { flex: none; width: 42px; text-align: right; color: var(--text);
+    font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .rr .ri { flex: none; font-size: 10px; font-weight: 800; padding: 1px 5px;
+    border-radius: 5px; background: var(--against-dim); color: var(--against); }
+  /* Game-window highlight: Thursday red, overseas-Sunday yellow, Monday blue */
+  .rr.win-thursday { border-left-color: var(--against); }
+  .rr.win-overseas { border-left-color: var(--both); }
+  .rr.win-monday { border-left-color: var(--toss); }
+  .rr.win-thursday .gm { color: var(--against); font-weight: 700; }
+  .rr.win-overseas .gm { color: var(--both); font-weight: 700; }
+  .rr.win-monday .gm { color: var(--toss); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -544,6 +596,7 @@
     <div class="chips" id="chips"></div>
   </header>
 
+  <div id="pane-live">
   <nav class="tabs" role="tablist">
     <button class="tab" id="tab-players" role="tab" type="button">Players</button>
     <button class="tab" id="tab-scoreboard" role="tab" type="button">Scoreboard</button>
@@ -608,6 +661,16 @@
   <div id="errors"></div>
   <main id="list"></main>
   <main id="board" hidden></main>
+  </div><!-- /pane-live -->
+
+  <div id="pane-rosters" hidden>
+    <div id="rosters-list"></div>
+  </div>
+
+  <div id="pane-available" hidden>
+    <div id="available-body"></div>
+  </div>
+
   <footer id="footer"></footer>
 
   <section class="notif" id="notif">
@@ -626,6 +689,15 @@
     </div>
     <button class="secondary" id="notif-reveal" type="button" hidden>Show device code</button>
   </section>
+
+  <nav class="bottomnav" role="tablist" aria-label="Sections">
+    <button class="navbtn" id="nav-live" type="button" aria-selected="true">
+      <span class="navicon">&#128202;</span><span>Live</span></button>
+    <button class="navbtn" id="nav-rosters" type="button" aria-selected="false">
+      <span class="navicon">&#128203;</span><span>Rosters</span></button>
+    <button class="navbtn" id="nav-available" type="button" aria-selected="false">
+      <span class="navicon">&#10133;</span><span>Available</span></button>
+  </nav>
 </div>
 
 <script>
@@ -1189,6 +1261,103 @@ function setTab(name) {
 el("tab-players").addEventListener("click", () => setTab("players"));
 el("tab-scoreboard").addEventListener("click", () => setTab("scoreboard"));
 
+/* ---- bottom section nav: Live / Rosters / Available ------------------- */
+
+let currentPane = "live";
+
+function setPane(name) {
+  currentPane = name;
+  try { localStorage.setItem("pane", name); } catch (err) { /* private mode */ }
+  ["live", "rosters", "available"].forEach(n => {
+    el("pane-" + n).hidden = (n !== name);
+    el("nav-" + n).setAttribute("aria-selected", String(n === name));
+  });
+  // The for/against counts in the header only make sense on the Live tab.
+  el("chips").style.display = (name === "live") ? "" : "none";
+  if (name === "rosters") renderRosters();
+  if (name === "available") renderAvailable();
+  window.scrollTo(0, 0);
+}
+el("nav-live").addEventListener("click", () => setPane("live"));
+el("nav-rosters").addEventListener("click", () => setPane("rosters"));
+el("nav-available").addEventListener("click", () => setPane("available"));
+
+// Reopen whatever section the user last had.
+(function () {
+  let p = "live";
+  try { p = localStorage.getItem("pane") || "live"; } catch (err) { /* ignore */ }
+  setPane(["live", "rosters", "available"].indexOf(p) >= 0 ? p : "live");
+})();
+
+/* ---- Rosters ---------------------------------------------------------- */
+
+// Starters sort by this order; a trailing number (RB1, WR2) is stripped first.
+const SLOT_ORDER = ["QB", "RB", "WR", "TE", "FLEX", "REC_FLEX", "WRRB_FLEX",
+  "SUPER_FLEX", "SUPERFLEX", "K", "DEF", "DL", "LB", "DB", "IDP_FLEX"];
+function slotRank(slot) {
+  const base = String(slot).replace(/\d+$/, "");
+  const i = SLOT_ORDER.indexOf(base);
+  return i < 0 ? SLOT_ORDER.length : i;
+}
+function slotCategory(slot) {
+  if (slot === "IR" || slot === "IL" || slot === "IL+") return "ir";
+  if (slot === "TAXI") return "taxi";
+  if (slot === "BN" || slot === "BE") return "bench";
+  return "starter";
+}
+
+function rosterRowHtml(p) {
+  const g = p.game || null;
+  const win = g && g.window ? " win-" + g.window : "";
+  const gm = g ? `<span class="gm">${esc(g.kickoff_label)}</span>`
+               : `<span class="gm bye">BYE</span>`;
+  const inj = p.injury_status
+    ? `<span class="ri">${esc(String(p.injury_status).slice(0, 3))}</span>` : "";
+  const pts = (p.points === null || p.points === undefined)
+    ? "" : (Math.round(p.points * 10) / 10);
+  return `<div class="rr${win}">
+    <span class="slot">${esc(p.slot)}</span>
+    <span class="nm">${esc(p.name)} <span class="pos">· ${esc(p.position)} ${esc(p.team)}</span></span>
+    ${inj}${gm}
+    <span class="pt">${pts}</span>
+  </div>`;
+}
+
+function renderRosters() {
+  const wk = String((BUNDLE && BUNDLE.current && BUNDLE.current.week) || "");
+  const rosters = ((BUNDLE && BUNDLE.weeks && BUNDLE.weeks[wk]) || {}).rosters || [];
+  if (!rosters.length) {
+    el("rosters-list").innerHTML =
+      `<div class="empty-state"><div class="big">&#128203;</div>
+       <div>No rosters yet.</div></div>`;
+    return;
+  }
+  const sortByPts = arr => arr.sort((a, b) =>
+    (b.points || 0) - (a.points || 0) || a.name.localeCompare(b.name));
+  const section = (label, arr) => arr.length
+    ? `<div class="slot-group-head">${label}</div>` + arr.map(rosterRowHtml).join("") : "";
+  let html = "";
+  rosters.forEach(lg => {
+    const cats = { starter: [], bench: [], ir: [], taxi: [] };
+    (lg.players || []).forEach(p => cats[slotCategory(p.slot)].push(p));
+    cats.starter.sort((a, b) =>
+      slotRank(a.slot) - slotRank(b.slot) || String(a.slot).localeCompare(String(b.slot)));
+    sortByPts(cats.bench); sortByPts(cats.ir); sortByPts(cats.taxi);
+    html += `<div class="roster-league"><div class="roster-league-head">` +
+      `${esc(lg.league_name)} <span class="plat">${esc(lg.platform)}</span></div>` +
+      section("Starters", cats.starter) + section("Bench", cats.bench) +
+      section("IR", cats.ir) + section("Taxi", cats.taxi) + `</div>`;
+  });
+  el("rosters-list").innerHTML = html;
+}
+
+/* ---- Available (Phase 2) ---------------------------------------------- */
+function renderAvailable() {
+  el("available-body").innerHTML =
+    `<div class="empty-state"><div class="big">&#10133;</div>
+     <div>Available players — coming soon.</div></div>`;
+}
+
 let lastScores = {};
 
 function readAttr(name) {
@@ -1503,6 +1672,9 @@ function paint(bundle) {
   let saved = "players";
   try { saved = localStorage.getItem("tab") || "players"; } catch (err) { /* ignore */ }
   setTab(saved === "scoreboard" ? "scoreboard" : "players");
+
+  // Keep whichever section is open in sync with the fresh data.
+  if (currentPane === "rosters") renderRosters();
 }
 
 el("f-week").addEventListener("change", () => {
