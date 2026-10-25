@@ -312,14 +312,24 @@ def load_league(league_id, season, week, config):
         }
 
     # Every player rostered by anyone in the league - for the Available tab,
-    # which lists players on no roster here.
+    # which lists players on no roster here. We keep each player's full record,
+    # not just its ESPN id: Sleeper is missing an espn_id for a lot of players,
+    # so the Available cross-match has to fall back on name, and that needs the
+    # name and position to be carried through here.
     all_rostered = set()
+    rostered_records = []
+    seen_rostered = set()
     for team in all_teams:
         for entry in (team.get("roster") or {}).get("entries") or []:
             pool = entry.get("playerPoolEntry") or {}
-            pid = entry.get("playerId") or (pool.get("player") or {}).get("id")
-            if pid is not None:
-                all_rostered.add(str(pid))
+            player = pool.get("player") or {}
+            pid = entry.get("playerId") or player.get("id")
+            if pid is None or str(pid) in seen_rostered:
+                continue
+            seen_rostered.add(str(pid))
+            all_rostered.add(str(pid))
+            if player:
+                rostered_records.append(player_record(player))
 
     return {
         "matchup": matchup_detail,
@@ -330,6 +340,7 @@ def load_league(league_id, season, week, config):
         "my_slots": slots_for(my_team),
         "points": points,
         "rostered": sorted(all_rostered),
+        "rostered_records": rostered_records,
         "opponents": [
             {"name": _team_name(by_id[oid]), "slots": slots_for(by_id[oid])}
             for oid in opponent_ids

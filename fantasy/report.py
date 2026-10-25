@@ -517,10 +517,20 @@ class Assembler(object):
             if plat not in ("sleeper", "espn"):
                 continue
             ids = set()
-            for pid in (league.get("rostered") or []):
-                sid = str(pid) if plat == "sleeper" else self.by_espn_id.get(str(pid))
-                if sid:
-                    ids.add(sid)
+            if plat == "sleeper":
+                # Sleeper ids are exact - no cross-match needed.
+                for pid in (league.get("rostered") or []):
+                    ids.add(str(pid))
+            else:
+                # ESPN: resolve each rostered player to its Sleeper id the same
+                # way stats and injuries are matched - espn_id, then name, then
+                # team for defenses. Matching on espn_id alone missed the many
+                # players Sleeper has no espn_id for, so they wrongly showed as
+                # available; the name fallback is what fixes that.
+                for rec in (league.get("rostered_records") or []):
+                    sid = self.stats_id_for(rec)
+                    if sid:
+                        ids.add(str(sid))
             league_sets.append((league["league_name"], ids))
         if not league_sets:
             return []
