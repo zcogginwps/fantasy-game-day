@@ -613,8 +613,14 @@
     background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
     margin-bottom: 5px; }
   .av-main { flex: 1; min-width: 0; }
-  .av-name { font-size: 14.5px; font-weight: 650; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; }
+  .av-name { font-size: 14.5px; font-weight: 650; display: flex;
+    align-items: center; gap: 6px; }
+  .av-name .nm-text { min-width: 0; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .av-inj { flex: none; font-size: 9.5px; font-weight: 800; padding: 1px 5px;
+    border-radius: 5px; text-transform: uppercase; letter-spacing: .02em;
+    background: rgba(255,176,32,.16); color: var(--warn); }
+  .av-inj.bad { background: var(--against-dim); color: var(--against); }
   .av-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
   .av-leagues { margin-top: 5px; line-height: 1.45; }
   .av-lead { font-size: 10px; font-weight: 700; color: var(--muted);
@@ -722,10 +728,18 @@
       <div class="field"><label for="av-pos">Position</label>
         <select id="av-pos">
           <option value="all">All</option>
+          <option value="FLEX">Flex (RB/WR/TE)</option>
           <option value="QB">QB</option><option value="RB">RB</option>
           <option value="WR">WR</option><option value="TE">TE</option>
           <option value="K">K</option><option value="DEF">DEF</option>
         </select>
+      </div>
+      <div class="field">
+        <label for="av-inj-btn">Injury</label>
+        <div class="league-select">
+          <button type="button" id="av-inj-btn" class="league-trigger" aria-haspopup="true" aria-expanded="false"><span id="av-inj-label">Most statuses</span></button>
+          <div id="av-inj-menu" class="league-menu" hidden></div>
+        </div>
       </div>
       <div class="field"><label for="av-sort">Rank by</label>
         <select id="av-sort">
@@ -1446,15 +1460,70 @@ function loadAvPrefs() {
 function saveAvPrefs() {
   try {
     localStorage.setItem(AV_PREF_KEY, JSON.stringify(
-      { leagues: avSelectedLeagues, pos: avPos, sort: avSort }));
+      { leagues: avSelectedLeagues, pos: avPos, sort: avSort, inj: avInjuries }));
   } catch (e) { /* private mode */ }
 }
 const avPrefs = loadAvPrefs();
 
 let avSelectedLeagues = null;   // seeded from prefs (or all) in fillAvailLeagues
+let avInjuries = null;          // which injury statuses to include
 let avPos = avPrefs.pos || "all";
 let avSort = avPrefs.sort || "week_points";
 const AV_LABEL = { week_points: "Wk", avg_points: "Avg", season_points: "Tot" };
+
+// Injury designations: tidy Sleeper's short codes, order them, and know which
+// read as a real problem (for the red badge and the default exclusions).
+const INJ_ORDER = ["Healthy", "Questionable", "Doubtful", "Out", "PUP",
+  "Inactive", "COVID", "IR", "Suspended", "Did Not Report"];
+const INJ_BAD = ["Out", "Doubtful", "IR", "Suspended", "PUP", "Inactive"];
+const INJ_SHORT = { Questionable: "Q", Doubtful: "D", Out: "OUT", PUP: "PUP",
+  Inactive: "INA", COVID: "COV", IR: "IR", Suspended: "SUS", "Did Not Report": "DNR" };
+function injuryLabel(status) {
+  if (!status) return "Healthy";
+  const map = { Sus: "Suspended", NA: "Inactive", COV: "COVID", Cov: "COVID", DNR: "Did Not Report" };
+  return map[status] || status;
+}
+function injuryTag(status) {
+  const lbl = injuryLabel(status);
+  if (lbl === "Healthy") return "";
+  return `<span class="av-inj${INJ_BAD.includes(lbl) ? " bad" : ""}">${esc(INJ_SHORT[lbl] || lbl)}</span>`;
+}
+function availInjuryLabels() {
+  const s = new Set();
+  availData().forEach(p => s.add(injuryLabel(p.injury_status)));
+  return [...s].sort((a, b) => {
+    const ia = INJ_ORDER.indexOf(a), ib = INJ_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+  });
+}
+function updateAvailInjLabel(labels) {
+  labels = labels || availInjuryLabels();
+  const allOn = avInjuries && avInjuries.length === labels.length;
+  el("av-inj-label").textContent = allOn ? "All statuses"
+    : avInjuries.length === 1 ? avInjuries[0]
+    : avInjuries.length + " statuses";
+  el("av-inj-btn").classList.toggle("active", !allOn);
+}
+function fillAvailInjuries() {
+  const labels = availInjuryLabels();
+  if (avInjuries === null) {
+    const saved = Array.isArray(avPrefs.inj) ? avPrefs.inj.filter(n => labels.includes(n)) : null;
+    // Default: everyone except Suspended and IR.
+    avInjuries = (saved && saved.length) ? saved
+      : labels.filter(n => n !== "Suspended" && n !== "IR");
+    if (!avInjuries.length) avInjuries = labels.slice();
+  } else {
+    avInjuries = avInjuries.filter(n => labels.includes(n));
+    if (!avInjuries.length) avInjuries = labels.slice();
+  }
+  const allOn = avInjuries.length === labels.length;
+  el("av-inj-menu").innerHTML =
+    `<label class="league-opt all"><input type="checkbox" data-inj="__all"${allOn ? " checked" : ""}> All statuses</label>` +
+    labels.map(n =>
+      `<label class="league-opt"><input type="checkbox" data-inj="${esc(n)}"` +
+      `${avInjuries.includes(n) ? " checked" : ""}> ${esc(n)}</label>`).join("");
+  updateAvailInjLabel(labels);
+}
 
 function availData() {
   const wk = String((BUNDLE && BUNDLE.current && BUNDLE.current.week) || "");
@@ -1504,12 +1573,18 @@ function renderAvailable() {
   }
   el("avail-bar").style.display = "";
   fillAvailLeagues();
+  fillAvailInjuries();
   el("av-pos").value = avPos;
   el("av-sort").value = avSort;
   const sel = avSelectedLeagues || [];
+  const inj = avInjuries || [];
   const n = v => (v === null || v === undefined) ? -1 : v;
+  const posOk = p => avPos === "all" ? true
+    : avPos === "FLEX" ? (p.position === "RB" || p.position === "WR" || p.position === "TE")
+    : p.position === avPos;
   const rows = data
-    .filter(p => (avPos === "all" || p.position === avPos) &&
+    .filter(p => posOk(p) &&
+                 inj.includes(injuryLabel(p.injury_status)) &&
                  (p.available_in || []).some(name => sel.includes(name)))
     .sort((a, b) => n(b[avSort]) - n(a[avSort]) ||
                     (b.season_points || 0) - (a.season_points || 0) ||
@@ -1534,7 +1609,7 @@ function renderAvailable() {
         inLeagues.map(x => `<div class="av-lg">${esc(x)}</div>`).join("") + `</div>`
       : "";
     return `<div class="av-row"><div class="av-main">` +
-      `<div class="av-name">${esc(p.name)}</div>` +
+      `<div class="av-name"><span class="nm-text">${esc(p.name)}</span>${injuryTag(p.injury_status)}</div>` +
       `<div class="av-meta">${esc(p.position)} · ${esc(p.team)}</div>` +
       leaguesHtml +
       `</div>` +
@@ -1548,6 +1623,7 @@ el("av-pos").addEventListener("change", () => { avPos = el("av-pos").value; save
 el("av-sort").addEventListener("change", () => { avSort = el("av-sort").value; saveAvPrefs(); renderAvailable(); });
 el("av-league-btn").addEventListener("click", () => {
   const menu = el("av-league-menu");
+  el("av-inj-menu").hidden = true;   // only one dropdown open at a time
   menu.hidden = !menu.hidden;
   el("av-league-btn").setAttribute("aria-expanded", String(!menu.hidden));
   el("avail-bar").classList.toggle("menu-open", !menu.hidden);
@@ -1580,6 +1656,45 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#pane-available .league-select") && !el("av-league-menu").hidden) {
     el("av-league-menu").hidden = true;
     el("av-league-btn").setAttribute("aria-expanded", "false");
+    el("avail-bar").classList.remove("menu-open");
+  }
+});
+
+el("av-inj-btn").addEventListener("click", () => {
+  const menu = el("av-inj-menu");
+  el("av-league-menu").hidden = true;   // only one dropdown open at a time
+  menu.hidden = !menu.hidden;
+  el("av-inj-btn").setAttribute("aria-expanded", String(!menu.hidden));
+  el("avail-bar").classList.toggle("menu-open", !menu.hidden);
+});
+el("av-inj-menu").addEventListener("change", (e) => {
+  const cb = e.target.closest("input[type=checkbox]");
+  if (!cb) return;
+  const labels = availInjuryLabels();
+  const name = cb.getAttribute("data-inj");
+  const boxes = el("av-inj-menu").querySelectorAll("input[type=checkbox]");
+  if (name === "__all") {
+    avInjuries = labels.slice();
+    boxes.forEach(x => { x.checked = true; });
+  } else {
+    const i = avInjuries.indexOf(name);
+    if (cb.checked && i === -1) avInjuries.push(name);
+    else if (!cb.checked && i !== -1) avInjuries.splice(i, 1);
+    if (!avInjuries.length) {
+      avInjuries = labels.slice();
+      boxes.forEach(x => { x.checked = true; });
+    }
+    const allBox = el("av-inj-menu").querySelector('input[data-inj="__all"]');
+    if (allBox) allBox.checked = avInjuries.length === labels.length;
+  }
+  updateAvailInjLabel(labels);
+  saveAvPrefs();
+  renderAvailable();
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#pane-available .league-select") && !el("av-inj-menu").hidden) {
+    el("av-inj-menu").hidden = true;
+    el("av-inj-btn").setAttribute("aria-expanded", "false");
     el("avail-bar").classList.remove("menu-open");
   }
 });

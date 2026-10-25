@@ -550,6 +550,7 @@ class Assembler(object):
                 "week_points": round(week_pts, 1) if week_pts is not None else None,
                 "season_points": round(total, 1),
                 "avg_points": round(total / gp, 1) if gp else None,
+                "injury_status": record.get("injury_status") or "",
                 "available_in": free_in,
             })
 
