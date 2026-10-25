@@ -580,6 +580,14 @@
   .rr.win-thursday .gm { color: var(--against); font-weight: 700; }
   .rr.win-overseas .gm { color: var(--both); font-weight: 700; }
   .rr.win-monday .gm { color: var(--toss); font-weight: 700; }
+  /* Colour legend at the top of Rosters */
+  .rleg { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 2px 10px;
+    font-size: 11.5px; color: var(--muted); }
+  .rleg-item { display: inline-flex; align-items: center; gap: 6px; }
+  .rleg-dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .rleg-dot.win-thursday { background: var(--against); }
+  .rleg-dot.win-overseas { background: var(--both); }
+  .rleg-dot.win-monday { background: var(--toss); }
 
   /* Available */
   .avail-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
@@ -591,17 +599,20 @@
     text-transform: uppercase; letter-spacing: .03em;
     border-bottom: 1px solid var(--line); }
   .av-head .av-h-name { flex: 1; }
-  .av-h-num { width: 46px; text-align: right; }
+  .av-h-num { width: 44px; text-align: right; }
   .av-h-num.on { color: var(--text); }
-  .av-row { display: flex; align-items: center; gap: 6px; padding: 7px 10px;
-    border-bottom: 1px solid var(--line); }
+  .av-row { display: flex; align-items: center; gap: 8px; padding: 9px 11px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 9px;
+    margin-bottom: 5px; }
   .av-main { flex: 1; min-width: 0; }
-  .av-name { font-size: 14px; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; }
-  .av-meta { font-size: 11.5px; color: var(--muted); white-space: nowrap;
+  .av-name { font-size: 14.5px; font-weight: 650; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
-  .av-num { width: 46px; text-align: right; font-variant-numeric: tabular-nums;
-    font-size: 13px; color: var(--muted); }
+  .av-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .av-leagues { font-size: 12px; color: var(--muted); margin-top: 4px;
+    line-height: 1.35; }
+  .av-leagues b { color: var(--for); font-weight: 650; }
+  .av-num { width: 44px; text-align: right; font-variant-numeric: tabular-nums;
+    font-size: 13.5px; color: var(--muted); }
   .av-num.on { color: var(--text); font-weight: 750; }
 </style>
 </head>
@@ -1383,7 +1394,10 @@ function renderRosters() {
     (b.points || 0) - (a.points || 0) || a.name.localeCompare(b.name));
   const section = (label, arr) => arr.length
     ? `<div class="slot-group-head">${label}</div>` + arr.map(rosterRowHtml).join("") : "";
-  let html = "";
+  let html = `<div class="rleg">` +
+    `<span class="rleg-item"><i class="rleg-dot win-thursday"></i>Thursday</span>` +
+    `<span class="rleg-item"><i class="rleg-dot win-overseas"></i>Sun AM (intl)</span>` +
+    `<span class="rleg-item"><i class="rleg-dot win-monday"></i>Monday</span></div>`;
   rosters.forEach(lg => {
     const cats = { starter: [], bench: [], ir: [], taxi: [] };
     (lg.players || []).forEach(p => cats[slotCategory(p.slot)].push(p));
@@ -1468,11 +1482,14 @@ function renderAvailable() {
   }
   const cell = (s, v) => `<span class="av-num${avSort === s ? " on" : ""}">${v == null ? "–" : v}</span>`;
   html += rows.map(p => {
-    const inStr = (p.available_in || []).join(", ");
+    // Only the leagues currently in the filter - not every league the player is
+    // free in - so removing a league drops it from the rows too.
+    const inStr = (p.available_in || []).filter(name => sel.includes(name)).join(", ");
     return `<div class="av-row"><div class="av-main">` +
       `<div class="av-name">${esc(p.name)}</div>` +
-      `<div class="av-meta">${esc(p.position)} · ${esc(p.team)}` +
-      `${inStr ? " · " + esc(inStr) : ""}</div></div>` +
+      `<div class="av-meta">${esc(p.position)} · ${esc(p.team)}</div>` +
+      `${inStr ? `<div class="av-leagues">Free in <b>${esc(inStr)}</b></div>` : ""}` +
+      `</div>` +
       cell("week_points", p.week_points) + cell("avg_points", p.avg_points) +
       cell("season_points", p.season_points) + `</div>`;
   }).join("");
