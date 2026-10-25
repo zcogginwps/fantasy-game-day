@@ -608,9 +608,10 @@
   .av-name { font-size: 14.5px; font-weight: 650; white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; }
   .av-meta { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
-  .av-leagues { font-size: 12px; color: var(--muted); margin-top: 4px;
-    line-height: 1.35; }
-  .av-leagues b { color: var(--for); font-weight: 650; }
+  .av-leagues { margin-top: 5px; line-height: 1.45; }
+  .av-lead { font-size: 10px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .03em; display: block; margin-bottom: 1px; }
+  .av-lg { font-size: 12.5px; color: var(--for); font-weight: 600; }
   .av-num { width: 44px; text-align: right; font-variant-numeric: tabular-nums;
     font-size: 13.5px; color: var(--muted); }
   .av-num.on { color: var(--text); font-weight: 750; }
@@ -1484,11 +1485,15 @@ function renderAvailable() {
   html += rows.map(p => {
     // Only the leagues currently in the filter - not every league the player is
     // free in - so removing a league drops it from the rows too.
-    const inStr = (p.available_in || []).filter(name => sel.includes(name)).join(", ");
+    const inLeagues = (p.available_in || []).filter(name => sel.includes(name));
+    const leaguesHtml = inLeagues.length
+      ? `<div class="av-leagues"><span class="av-lead">Available in</span>` +
+        inLeagues.map(x => `<div class="av-lg">${esc(x)}</div>`).join("") + `</div>`
+      : "";
     return `<div class="av-row"><div class="av-main">` +
       `<div class="av-name">${esc(p.name)}</div>` +
       `<div class="av-meta">${esc(p.position)} · ${esc(p.team)}</div>` +
-      `${inStr ? `<div class="av-leagues">Free in <b>${esc(inStr)}</b></div>` : ""}` +
+      leaguesHtml +
       `</div>` +
       cell("week_points", p.week_points) + cell("avg_points", p.avg_points) +
       cell("season_points", p.season_points) + `</div>`;
