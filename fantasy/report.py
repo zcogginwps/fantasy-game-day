@@ -108,6 +108,7 @@ def _roster_game_info(game, tz, eastern):
         "kickoff_utc": info["kickoff_utc"],
         "kickoff_label": info["kickoff_label"],
         "label": info["label"],
+        "state": info["state"],
         "window": game_window(game.kickoff_utc, eastern),
     }
 
@@ -464,21 +465,26 @@ class Assembler(object):
             "counts": _counts(players),
         }, todays_names
 
-    def rosters(self, week_games, tz):
+    def rosters(self, week_games, tz, projections=None):
         """Every league's full current-week roster - starters, bench, IR, taxi -
-        with each player's slot, points, injury and the game they play this week
-        (tagged Thursday / Monday / overseas-Sunday for the Rosters view)."""
+        with each player's slot, points, projection, injury and the game they
+        play this week (tagged Thursday / Monday / overseas-Sunday)."""
         eastern = _eastern()
+        projections = projections or {}
         out = []
         for league in self.leagues:
             id_source = league.get("id_source") or league["platform"]
             league_points = league.get("points") or {}
+            scoring = league.get("scoring_type") or "pts_ppr"
             players = []
             for player_id, slot in (league.get("my_slots") or {}).items():
                 record = self.record_for(id_source, player_id, league)
                 if not record:
                     continue
                 game = week_games.get(record.get("team"))
+                # Projection in this league's scoring, via Sleeper's player index.
+                proj_row = projections.get(str(self.stats_id_for(record) or ""))
+                projected = (proj_row or {}).get(scoring)
                 players.append({
                     "name": record["name"],
                     "position": record.get("position") or "",
@@ -486,6 +492,7 @@ class Assembler(object):
                     "slot": slot,
                     "starting": _is_starting(slot),
                     "points": league_points.get(player_id),
+                    "projected": round(projected, 1) if projected is not None else None,
                     "injury_status": record.get("injury_status") or "",
                     "game": _roster_game_info(game, tz, eastern) if game else None,
                 })
@@ -601,10 +608,10 @@ def build_week(config, season, week, tz, changes_for_date=None,
         # Matchup lineups span the whole week, not one day.
         week_games.update(schedule_module.index_by_team(games))
 
-    rosters = assembler.rosters(week_games, tz)
+    projections = sleeper_client.get_projections(season, week)
+    rosters = assembler.rosters(week_games, tz, projections)
     season_stats = sleeper_client.get_season_stats(season)
     available = assembler.available(season_stats)
-    projections = sleeper_client.get_projections(season, week)
     board = scoreboard_module.build(
         leagues,
         scoreboard_module.Resolver(assembler, week_games, projections, tz),
