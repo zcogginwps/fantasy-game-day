@@ -496,6 +496,61 @@ class Assembler(object):
             })
         return out
 
+    def available(self, season_stats):
+        """Top free agents across the user's Sleeper and ESPN leagues, with this
+        week's, the season total and the per-game points (PPR), and which of
+        those leagues each is free in."""
+        POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
+        CAP = 150
+
+        # Rostered Sleeper ids per league, for leagues whose every roster we see.
+        league_sets = []
+        for league in self.leagues:
+            plat = league["platform"]
+            if plat not in ("sleeper", "espn"):
+                continue
+            ids = set()
+            for pid in (league.get("rostered") or []):
+                sid = str(pid) if plat == "sleeper" else self.by_espn_id.get(str(pid))
+                if sid:
+                    ids.add(sid)
+            league_sets.append((league["league_name"], ids))
+        if not league_sets:
+            return []
+
+        def ppr(stats):
+            return stats.get("pts_ppr") if stats else None
+
+        rows = []
+        for sid, player in self.sleeper_players.items():
+            pos = (player.get("position") or "").upper()
+            if pos not in POSITIONS:
+                continue
+            season = season_stats.get(sid)
+            total = ppr(season)
+            if total is None:
+                continue  # never scored this season - not worth listing
+            free_in = [name for name, ids in league_sets if sid not in ids]
+            if not free_in:
+                continue  # rostered in every league we can see
+            week_pts = ppr(self.week_stats.get(sid))
+            gp = (season or {}).get("gp") or 0
+            record = sleeper_client.player_record(player)
+            rows.append({
+                "name": record["name"],
+                "position": pos,
+                "team": record.get("team") or "",
+                "week_points": round(week_pts, 1) if week_pts is not None else None,
+                "season_points": round(total, 1),
+                "avg_points": round(total / gp, 1) if gp else None,
+                "available_in": free_in,
+            })
+
+        rows.sort(key=lambda p: -(p["season_points"] or 0))
+        top = rows[:CAP]
+        rest = sorted(rows[CAP:], key=lambda p: -(p["week_points"] or 0))[:40]
+        return top + rest
+
 
 def _counts(players):
     return {
@@ -547,6 +602,8 @@ def build_week(config, season, week, tz, changes_for_date=None,
         week_games.update(schedule_module.index_by_team(games))
 
     rosters = assembler.rosters(week_games, tz)
+    season_stats = sleeper_client.get_season_stats(season)
+    available = assembler.available(season_stats)
     projections = sleeper_client.get_projections(season, week)
     board = scoreboard_module.build(
         leagues,
@@ -574,6 +631,7 @@ def build_week(config, season, week, tz, changes_for_date=None,
         "days": days,
         "scoreboard": board,
         "rosters": rosters,
+        "available": available,
         "leagues": _league_summary(leagues),
         "bench": {"mine": include_my_bench, "opponent": include_opponent_bench},
         "changes": changes,

@@ -311,6 +311,16 @@ def load_league(league_id, season, week, config):
             "opponents": [_side(their_entry, their_team)],
         }
 
+    # Every player rostered by anyone in the league - for the Available tab,
+    # which lists players on no roster here.
+    all_rostered = set()
+    for team in all_teams:
+        for entry in (team.get("roster") or {}).get("entries") or []:
+            pool = entry.get("playerPoolEntry") or {}
+            pid = entry.get("playerId") or (pool.get("player") or {}).get("id")
+            if pid is not None:
+                all_rostered.add(str(pid))
+
     return {
         "matchup": matchup_detail,
         "platform": "espn",
@@ -319,6 +329,7 @@ def load_league(league_id, season, week, config):
         "week": week,
         "my_slots": slots_for(my_team),
         "points": points,
+        "rostered": sorted(all_rostered),
         "opponents": [
             {"name": _team_name(by_id[oid]), "slots": slots_for(by_id[oid])}
             for oid in opponent_ids

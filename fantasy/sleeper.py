@@ -81,6 +81,20 @@ def get_week_stats(season, week):
     return data if isinstance(data, dict) else {}
 
 
+def get_season_stats(season):
+    """Every player's season-to-date totals, keyed by Sleeper player id.
+
+    One public call carries pre-computed pts_ppr/half/std plus games played (gp),
+    so per-game averages need no extra maths. Cached for an hour - season totals
+    only move once a week."""
+    url = "https://api.sleeper.app/v1/stats/nfl/regular/%s" % season
+    try:
+        data = get_json_cached(url, 3600, "sleeper_season_%s" % season)
+    except FetchError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def get_leagues(user_id, season):
     return get_json("%s/user/%s/leagues/nfl/%s" % (BASE, user_id, season)) or []
 
@@ -250,6 +264,10 @@ def load_league(league, user_id, week):
         "week": week,
         "points": points,
         "scoring_type": scoring_type(league),
+        # Every player rostered by anyone in the league - for the Available tab,
+        # which lists players on no roster here.
+        "rostered": sorted({str(pid) for r in rosters
+                            for pid in (r.get("players") or [])}),
         "matchup": {
             "me": side(my_roster, display_names.get(user_id, "My team")),
             "opponents": [side(r, owner_label(r)) for r in opponents],

@@ -580,6 +580,29 @@
   .rr.win-thursday .gm { color: var(--against); font-weight: 700; }
   .rr.win-overseas .gm { color: var(--both); font-weight: 700; }
   .rr.win-monday .gm { color: var(--toss); font-weight: 700; }
+
+  /* Available */
+  .avail-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
+    margin: 10px 0 2px; }
+  .avail-bar.menu-open { overflow: visible; }
+  .avail-bar .field { flex: 1 1 auto; min-width: 96px; margin: 0; }
+  .av-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px 5px;
+    font-size: 10.5px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .03em;
+    border-bottom: 1px solid var(--line); }
+  .av-head .av-h-name { flex: 1; }
+  .av-h-num { width: 46px; text-align: right; }
+  .av-h-num.on { color: var(--text); }
+  .av-row { display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+    border-bottom: 1px solid var(--line); }
+  .av-main { flex: 1; min-width: 0; }
+  .av-name { font-size: 14px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .av-meta { font-size: 11.5px; color: var(--muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .av-num { width: 46px; text-align: right; font-variant-numeric: tabular-nums;
+    font-size: 13px; color: var(--muted); }
+  .av-num.on { color: var(--text); font-weight: 750; }
 </style>
 </head>
 <body>
@@ -668,7 +691,31 @@
   </div>
 
   <div id="pane-available" hidden>
-    <div id="available-body"></div>
+    <div class="avail-bar" id="avail-bar">
+      <div class="field">
+        <label for="av-league-btn">Leagues</label>
+        <div class="league-select">
+          <button type="button" id="av-league-btn" class="league-trigger" aria-haspopup="true" aria-expanded="false"><span id="av-league-label">All leagues</span></button>
+          <div id="av-league-menu" class="league-menu" hidden></div>
+        </div>
+      </div>
+      <div class="field"><label for="av-pos">Position</label>
+        <select id="av-pos">
+          <option value="all">All</option>
+          <option value="QB">QB</option><option value="RB">RB</option>
+          <option value="WR">WR</option><option value="TE">TE</option>
+          <option value="K">K</option><option value="DEF">DEF</option>
+        </select>
+      </div>
+      <div class="field"><label for="av-sort">Rank by</label>
+        <select id="av-sort">
+          <option value="week_points">This week</option>
+          <option value="avg_points">Avg / game</option>
+          <option value="season_points">Season total</option>
+        </select>
+      </div>
+    </div>
+    <div id="available-list"></div>
   </div>
 
   <footer id="footer"></footer>
@@ -1351,12 +1398,125 @@ function renderRosters() {
   el("rosters-list").innerHTML = html;
 }
 
-/* ---- Available (Phase 2) ---------------------------------------------- */
-function renderAvailable() {
-  el("available-body").innerHTML =
-    `<div class="empty-state"><div class="big">&#10133;</div>
-     <div>Available players — coming soon.</div></div>`;
+/* ---- Available -------------------------------------------------------- */
+
+let avSelectedLeagues = null;   // null until first fill, then an array of names
+let avPos = "all";
+let avSort = "week_points";
+const AV_LABEL = { week_points: "Wk", avg_points: "Avg", season_points: "Tot" };
+
+function availData() {
+  const wk = String((BUNDLE && BUNDLE.current && BUNDLE.current.week) || "");
+  return ((BUNDLE && BUNDLE.weeks && BUNDLE.weeks[wk]) || {}).available || [];
 }
+function availLeagueNames() {
+  const s = new Set();
+  availData().forEach(p => (p.available_in || []).forEach(n => s.add(n)));
+  return [...s].sort();
+}
+function updateAvailLabel(leagues) {
+  leagues = leagues || availLeagueNames();
+  const allOn = avSelectedLeagues && avSelectedLeagues.length === leagues.length;
+  el("av-league-label").textContent = allOn ? "All leagues"
+    : avSelectedLeagues.length === 1 ? avSelectedLeagues[0]
+    : avSelectedLeagues.length + " leagues";
+  el("av-league-btn").classList.toggle("active", !allOn);
+}
+function fillAvailLeagues() {
+  const leagues = availLeagueNames();
+  if (avSelectedLeagues === null) avSelectedLeagues = leagues.slice();
+  else {
+    avSelectedLeagues = avSelectedLeagues.filter(n => leagues.includes(n));
+    if (!avSelectedLeagues.length) avSelectedLeagues = leagues.slice();
+  }
+  const allOn = avSelectedLeagues.length === leagues.length;
+  el("av-league-menu").innerHTML =
+    `<label class="league-opt all"><input type="checkbox" data-league="__all"${allOn ? " checked" : ""}> All leagues</label>` +
+    leagues.map(n =>
+      `<label class="league-opt"><input type="checkbox" data-league="${esc(n)}"` +
+      `${avSelectedLeagues.includes(n) ? " checked" : ""}> ${esc(n)}</label>`).join("");
+  updateAvailLabel(leagues);
+}
+
+function renderAvailable() {
+  const data = availData();
+  if (!data.length) {
+    el("avail-bar").style.display = "none";
+    el("available-list").innerHTML =
+      `<div class="empty-state"><div class="big">&#10133;</div>
+       <div>No available players yet.</div></div>`;
+    return;
+  }
+  el("avail-bar").style.display = "";
+  fillAvailLeagues();
+  const sel = avSelectedLeagues || [];
+  const n = v => (v === null || v === undefined) ? -1 : v;
+  const rows = data
+    .filter(p => (avPos === "all" || p.position === avPos) &&
+                 (p.available_in || []).some(name => sel.includes(name)))
+    .sort((a, b) => n(b[avSort]) - n(a[avSort]) ||
+                    (b.season_points || 0) - (a.season_points || 0) ||
+                    a.name.localeCompare(b.name));
+
+  const head = s => `<span class="av-h-num${avSort === s ? " on" : ""}">${AV_LABEL[s]}</span>`;
+  let html = `<div class="av-head"><span class="av-h-name">Player</span>` +
+    head("week_points") + head("avg_points") + head("season_points") + `</div>`;
+  if (!rows.length) {
+    el("available-list").innerHTML = html +
+      `<div class="empty-state">No players match these filters.</div>`;
+    return;
+  }
+  const cell = (s, v) => `<span class="av-num${avSort === s ? " on" : ""}">${v == null ? "–" : v}</span>`;
+  html += rows.map(p => {
+    const inStr = (p.available_in || []).join(", ");
+    return `<div class="av-row"><div class="av-main">` +
+      `<div class="av-name">${esc(p.name)}</div>` +
+      `<div class="av-meta">${esc(p.position)} · ${esc(p.team)}` +
+      `${inStr ? " · " + esc(inStr) : ""}</div></div>` +
+      cell("week_points", p.week_points) + cell("avg_points", p.avg_points) +
+      cell("season_points", p.season_points) + `</div>`;
+  }).join("");
+  el("available-list").innerHTML = html;
+}
+
+el("av-pos").addEventListener("change", () => { avPos = el("av-pos").value; renderAvailable(); });
+el("av-sort").addEventListener("change", () => { avSort = el("av-sort").value; renderAvailable(); });
+el("av-league-btn").addEventListener("click", () => {
+  const menu = el("av-league-menu");
+  menu.hidden = !menu.hidden;
+  el("av-league-btn").setAttribute("aria-expanded", String(!menu.hidden));
+  el("avail-bar").classList.toggle("menu-open", !menu.hidden);
+});
+el("av-league-menu").addEventListener("change", (e) => {
+  const cb = e.target.closest("input[type=checkbox]");
+  if (!cb) return;
+  const leagues = availLeagueNames();
+  const name = cb.getAttribute("data-league");
+  const boxes = el("av-league-menu").querySelectorAll("input[type=checkbox]");
+  if (name === "__all") {
+    avSelectedLeagues = leagues.slice();
+    boxes.forEach(x => { x.checked = true; });
+  } else {
+    const i = avSelectedLeagues.indexOf(name);
+    if (cb.checked && i === -1) avSelectedLeagues.push(name);
+    else if (!cb.checked && i !== -1) avSelectedLeagues.splice(i, 1);
+    if (!avSelectedLeagues.length) {
+      avSelectedLeagues = leagues.slice();
+      boxes.forEach(x => { x.checked = true; });
+    }
+    const allBox = el("av-league-menu").querySelector('input[data-league="__all"]');
+    if (allBox) allBox.checked = avSelectedLeagues.length === leagues.length;
+  }
+  updateAvailLabel(leagues);
+  renderAvailable();
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#pane-available .league-select") && !el("av-league-menu").hidden) {
+    el("av-league-menu").hidden = true;
+    el("av-league-btn").setAttribute("aria-expanded", "false");
+    el("avail-bar").classList.remove("menu-open");
+  }
+});
 
 let lastScores = {};
 
@@ -1675,6 +1835,7 @@ function paint(bundle) {
 
   // Keep whichever section is open in sync with the fresh data.
   if (currentPane === "rosters") renderRosters();
+  if (currentPane === "available") renderAvailable();
 }
 
 el("f-week").addEventListener("change", () => {
