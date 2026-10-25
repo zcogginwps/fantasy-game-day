@@ -600,7 +600,9 @@
   .avail-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
     margin: 10px 0 2px; }
   .avail-bar.menu-open { overflow: visible; }
-  .avail-bar .field { flex: 1 1 auto; min-width: 96px; margin: 0; }
+  /* All four controls the same width, two per row, so each dropdown (the Injury
+     one especially) has room to show its full label, e.g. "Questionable". */
+  .avail-bar > .field { flex: 1 1 calc(50% - 4px); min-width: 0; margin: 0; }
   .av-note { font-size: 11px; color: var(--muted); padding: 3px 2px 5px; text-align: right; }
   .av-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px 5px;
     font-size: 10.5px; font-weight: 700; color: var(--muted);
