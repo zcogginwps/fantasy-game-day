@@ -601,6 +601,7 @@
     margin: 10px 0 2px; }
   .avail-bar.menu-open { overflow: visible; }
   .avail-bar .field { flex: 1 1 auto; min-width: 96px; margin: 0; }
+  .av-note { font-size: 11px; color: var(--muted); padding: 3px 2px 5px; text-align: right; }
   .av-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px 5px;
     font-size: 10.5px; font-weight: 700; color: var(--muted);
     text-transform: uppercase; letter-spacing: .03em;
@@ -1435,9 +1436,24 @@ function renderRosters() {
 
 /* ---- Available -------------------------------------------------------- */
 
-let avSelectedLeagues = null;   // null until first fill, then an array of names
-let avPos = "all";
-let avSort = "week_points";
+// The Available filters persist, so a league you never want to see stays
+// hidden without re-adjusting it every visit.
+const AV_PREF_KEY = "avfilters";
+function loadAvPrefs() {
+  try { return JSON.parse(localStorage.getItem(AV_PREF_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveAvPrefs() {
+  try {
+    localStorage.setItem(AV_PREF_KEY, JSON.stringify(
+      { leagues: avSelectedLeagues, pos: avPos, sort: avSort }));
+  } catch (e) { /* private mode */ }
+}
+const avPrefs = loadAvPrefs();
+
+let avSelectedLeagues = null;   // seeded from prefs (or all) in fillAvailLeagues
+let avPos = avPrefs.pos || "all";
+let avSort = avPrefs.sort || "week_points";
 const AV_LABEL = { week_points: "Wk", avg_points: "Avg", season_points: "Tot" };
 
 function availData() {
@@ -1459,8 +1475,12 @@ function updateAvailLabel(leagues) {
 }
 function fillAvailLeagues() {
   const leagues = availLeagueNames();
-  if (avSelectedLeagues === null) avSelectedLeagues = leagues.slice();
-  else {
+  if (avSelectedLeagues === null) {
+    // First fill: use the saved selection if it still matches, else all.
+    const saved = Array.isArray(avPrefs.leagues)
+      ? avPrefs.leagues.filter(n => leagues.includes(n)) : null;
+    avSelectedLeagues = (saved && saved.length) ? saved : leagues.slice();
+  } else {
     avSelectedLeagues = avSelectedLeagues.filter(n => leagues.includes(n));
     if (!avSelectedLeagues.length) avSelectedLeagues = leagues.slice();
   }
@@ -1484,6 +1504,8 @@ function renderAvailable() {
   }
   el("avail-bar").style.display = "";
   fillAvailLeagues();
+  el("av-pos").value = avPos;
+  el("av-sort").value = avSort;
   const sel = avSelectedLeagues || [];
   const n = v => (v === null || v === undefined) ? -1 : v;
   const rows = data
@@ -1494,7 +1516,8 @@ function renderAvailable() {
                     a.name.localeCompare(b.name));
 
   const head = s => `<span class="av-h-num${avSort === s ? " on" : ""}">${AV_LABEL[s]}</span>`;
-  let html = `<div class="av-head"><span class="av-h-name">Player</span>` +
+  let html = `<div class="av-note">Points shown in PPR scoring</div>` +
+    `<div class="av-head"><span class="av-h-name">Player</span>` +
     head("week_points") + head("avg_points") + head("season_points") + `</div>`;
   if (!rows.length) {
     el("available-list").innerHTML = html +
@@ -1521,8 +1544,8 @@ function renderAvailable() {
   el("available-list").innerHTML = html;
 }
 
-el("av-pos").addEventListener("change", () => { avPos = el("av-pos").value; renderAvailable(); });
-el("av-sort").addEventListener("change", () => { avSort = el("av-sort").value; renderAvailable(); });
+el("av-pos").addEventListener("change", () => { avPos = el("av-pos").value; saveAvPrefs(); renderAvailable(); });
+el("av-sort").addEventListener("change", () => { avSort = el("av-sort").value; saveAvPrefs(); renderAvailable(); });
 el("av-league-btn").addEventListener("click", () => {
   const menu = el("av-league-menu");
   menu.hidden = !menu.hidden;
@@ -1550,6 +1573,7 @@ el("av-league-menu").addEventListener("change", (e) => {
     if (allBox) allBox.checked = avSelectedLeagues.length === leagues.length;
   }
   updateAvailLabel(leagues);
+  saveAvPrefs();
   renderAvailable();
 });
 document.addEventListener("click", (e) => {
