@@ -167,6 +167,33 @@ def scoring_type(league):
     return "pts_std"
 
 
+# Flex slots and the base positions each one can hold, so the Available tab
+# knows a league with only a FLEX (and no K slot) still rosters RB/WR/TE but
+# not kickers.
+_SLEEPER_FLEX = {
+    "FLEX": ("RB", "WR", "TE"),
+    "WRRB_FLEX": ("RB", "WR"),
+    "REC_FLEX": ("WR", "TE"),
+    "SUPER_FLEX": ("QB", "RB", "WR", "TE"),
+}
+_BASE_POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
+
+
+def positions_used(league):
+    """The base positions a league actually rosters, from its slot template.
+
+    A dynasty league with no kicker slot never rosters kickers, so the
+    Available tab should not offer them there. Bench/IR/taxi slots are ignored:
+    they hold whatever the starting slots allow, nothing new."""
+    used = set()
+    for slot in (league.get("roster_positions") or []):
+        if slot in _BASE_POSITIONS:
+            used.add(slot)
+        elif slot in _SLEEPER_FLEX:
+            used.update(_SLEEPER_FLEX[slot])
+    return sorted(used)
+
+
 def owns_roster(roster, user_id):
     """Whether the given user owns this roster, including as a co-owner."""
     if roster.get("owner_id") == user_id:
@@ -268,6 +295,9 @@ def load_league(league, user_id, week):
         # which lists players on no roster here.
         "rostered": sorted({str(pid) for r in rosters
                             for pid in (r.get("players") or [])}),
+        # Base positions this league rosters, so Available hides positions the
+        # league doesn't use (e.g. kickers in a no-kicker dynasty league).
+        "positions": positions_used(league),
         "matchup": {
             "me": side(my_roster, display_names.get(user_id, "My team")),
             "opponents": [side(r, owner_label(r)) for r in opponents],

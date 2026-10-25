@@ -37,6 +37,34 @@ LINEUP_SLOTS = {
 
 BENCH_SLOTS = (20, 21)
 
+# Base offensive positions each startable lineup slot can hold, so the Available
+# tab knows which positions a league actually rosters. Bench (20) and IR (21)
+# add nothing; IDP, punter and head-coach slots aren't positions Available lists.
+SLOT_BASE_POSITIONS = {
+    0: ("QB",), 1: ("QB",),
+    2: ("RB",), 3: ("RB", "WR"),
+    4: ("WR",), 5: ("WR", "TE"),
+    6: ("TE",),
+    7: ("QB", "RB", "WR", "TE"),   # OP / superflex
+    16: ("DEF",), 17: ("K",),
+    23: ("RB", "WR", "TE"),        # FLEX
+}
+
+
+def positions_used(payload):
+    """Base positions a league rosters, from its lineup slot counts."""
+    counts = (((payload.get("settings") or {}).get("rosterSettings") or {})
+              .get("lineupSlotCounts") or {})
+    used = set()
+    for slot, count in counts.items():
+        try:
+            slot_id, n = int(slot), int(count)
+        except (TypeError, ValueError):
+            continue
+        if n > 0 and slot_id in SLOT_BASE_POSITIONS:
+            used.update(SLOT_BASE_POSITIONS[slot_id])
+    return sorted(used)
+
 # The order ESPN itself lists a lineup in: passers, runners, receivers, tight
 # ends, the flex spots, then defense and kicker. Sleeper needs no equivalent
 # because its starters array already arrives in the league's own slot order.
@@ -341,6 +369,9 @@ def load_league(league_id, season, week, config):
         "points": points,
         "rostered": sorted(all_rostered),
         "rostered_records": rostered_records,
+        # Base positions this league rosters, so Available hides positions the
+        # league doesn't use (e.g. kickers in a no-kicker dynasty league).
+        "positions": positions_used(payload),
         "opponents": [
             {"name": _team_name(by_id[oid]), "slots": slots_for(by_id[oid])}
             for oid in opponent_ids

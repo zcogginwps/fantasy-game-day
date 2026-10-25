@@ -531,7 +531,11 @@ class Assembler(object):
                     sid = self.stats_id_for(rec)
                     if sid:
                         ids.add(str(sid))
-            league_sets.append((league["league_name"], ids))
+            # Positions the league rosters. A player is only "available" in a
+            # league that uses their position - no kickers in a league with no
+            # kicker slot. Empty means unknown, so don't filter in that case.
+            positions = set(league.get("positions") or [])
+            league_sets.append((league["league_name"], ids, positions))
         if not league_sets:
             return []
 
@@ -547,9 +551,10 @@ class Assembler(object):
             total = ppr(season)
             if total is None:
                 continue  # never scored this season - not worth listing
-            free_in = [name for name, ids in league_sets if sid not in ids]
+            free_in = [name for name, ids, positions in league_sets
+                       if sid not in ids and (not positions or pos in positions)]
             if not free_in:
-                continue  # rostered in every league we can see
+                continue  # rostered everywhere, or no league uses this position
             week_pts = ppr(self.week_stats.get(sid))
             gp = (season or {}).get("gp") or 0
             record = sleeper_client.player_record(player)
