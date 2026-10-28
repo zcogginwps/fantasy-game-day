@@ -11,7 +11,6 @@
    "Antonio Williams": "FLEX1",
    "DJ Moore": "FLEX2",
    "Jacoby Brissett": "SUPER_FLEX",
-   "Trey Smack": "K",
    "Ricky Pearsall": "IR",
    "Kyle Monangai": "IR",
    "Romeo Doubs": "IR",
@@ -20,6 +19,7 @@
    "Kalif Raymond": "BN",
    "Mark Andrews": "BN",
    "Kyler Murray": "BN",
+   "Chase McLaughlin": "BN",
    "Tank Dell": "BN"
   },
   "Nash\u001fhgowen": {
@@ -62,19 +62,19 @@
   "Guys Being Dudes\u001fBowenMcC": {
    "Jared Goff": "QB",
    "Kenneth Walker III": "RB1",
-   "Aaron Jones Sr.": "RB2",
+   "Breece Hall": "RB2",
    "Amon-Ra St. Brown": "WR1",
    "Christian Watson": "WR2",
-   "Dalton Schultz": "TE",
+   "Jake Ferguson": "TE",
    "Luther Burden III": "FLEX1",
-   "Devaughn Vele": "FLEX2",
+   "Emeka Egbuka": "FLEX2",
    "Jake Bates": "K",
    "Las Vegas Raiders": "DEF",
    "Michael Penix Jr.": "BN",
    "Blake Corum": "BN",
    "Keon Coleman": "BN",
-   "Emeka Egbuka": "BN",
-   "Breece Hall": "BN"
+   "Devaughn Vele": "BN",
+   "Aaron Jones Sr.": "BN"
   },
   "Victorious Secret - Dynasty\u001fme": {
    "Trevor Lawrence": "QB",
@@ -125,6 +125,7 @@
    "Jonah Coleman": "TAXI",
    "Malik Nabers": "BN",
    "George Holani": "BN",
+   "Elic Ayomanor": "BN",
    "Quinshon Judkins": "BN",
    "Tyler Warren": "BN",
    "Carnell Tate": "BN",
@@ -132,7 +133,6 @@
    "Stefon Diggs": "BN",
    "Tyler Higbee": "BN",
    "Patrick Mahomes": "BN",
-   "Austin Ekeler": "BN",
    "Saquon Barkley": "BN",
    "Kyle Pitts Sr.": "BN",
    "Dameon Pierce": "BN",
