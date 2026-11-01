@@ -1,5 +1,13 @@
 {
- "changes": [],
- "sent": [],
+ "changes": [
+  "3815e95dffb5",
+  "878db9058bb5",
+  "bbb5b9a9fbf9",
+  "e221fecd9fa5"
+ ],
+ "sent": [
+  "kickoff",
+  "morning"
+ ],
  "weeks_refreshed": true
 }
