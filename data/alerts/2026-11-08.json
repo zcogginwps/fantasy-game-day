@@ -1,7 +1,14 @@
 {
- "changes": [],
+ "changes": [
+  "1897865bf7e6",
+  "486c4fdbe3d0",
+  "6e683e44c51f",
+  "7b7eb0f1e305",
+  "d47f1ab24f6e"
+ ],
  "sent": [
-  "kickoff"
+  "kickoff",
+  "morning"
  ],
  "weeks_refreshed": true
 }
